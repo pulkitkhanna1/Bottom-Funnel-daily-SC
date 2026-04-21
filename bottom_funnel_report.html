@@ -464,6 +464,13 @@ function cell(val, benchVal) {
   return `<td class="${cls}">${fmt(val)}</td>`;
 }
 
+// Fixed-threshold colour coding (e.g. Activation D0: >= 23% green, < 23% red)
+function cellT(val, threshold) {
+  const a = parseVal(val);
+  const cls = a === null ? '' : (a >= threshold ? 'meets' : 'miss');
+  return `<td class="${cls}">${fmt(val)}</td>`;
+}
+
 // ── ADMIN HELPERS ─────────────────────────────────────────────────────────────
 function getAction(assetCode) {
   return getActions()[assetCode] || '';
@@ -586,7 +593,7 @@ function d7Rows(promoList, cls = '') {
         <td>${fmt(d[C.D3_MAT])}</td>
         <td>${fmt(d[C.D7_MAT])}</td>
         <td>${fmt(d[C.SPENT])}</td>
-        <td>${fmt(d[C.ACT_D0])}</td>
+        ${cellT(d[C.ACT_D0], 0.23)}
         ${cell(d[C.ACT_D3],   b[C.ACT_D3])}
         ${cell(d[C.REC_D7],   b[C.REC_D7])}
         ${cell(d[C.D3H3],     b[C.D3H3])}
@@ -727,7 +734,7 @@ function d0Row(p, hidden = false) {
       <td>${fmt(d[C.CPI])}</td>
       <td>${fmt(d[C.INSTALLS])}</td>
       <td>${fmt(d[C.SPENT])}</td>
-      ${cell(d[C.ACT_D0], b[C.ACT_D0])}
+      ${cellT(d[C.ACT_D0], 0.23)}
       <td class="action-cell left">${adminCtrl}${escHtml(getAction(p.assetCode))}</td>
     </tr>`;
 }
