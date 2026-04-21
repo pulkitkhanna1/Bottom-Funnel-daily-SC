@@ -131,6 +131,24 @@
     tbody tr.bench-row td { background: var(--cell-bench); }
     tbody tr.data-row td { background: var(--cell-alt); }
 
+    /* Hidden promos — greyed out at bottom in admin mode */
+    tr.hidden-bench td, tr.hidden-data td {
+      opacity: 0.38;
+      background: #e8e8e8 !important;
+    }
+    tr.hidden-bench td, tr.hidden-data td { color: #777; }
+    .hidden-divider td {
+      background: #ddd !important;
+      font-size: 11px;
+      font-weight: 700;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 3px 6px;
+      text-align: left;
+      border-bottom: 1px solid #bbb;
+    }
+
     .left { text-align: left; }
     td.action-cell { text-align: left; min-width: 220px; max-width: 320px; word-break: break-word; }
     .hidden-badge {
@@ -331,18 +349,23 @@ function fetchGvizJSONP() {
 function gvizToRows(data) {
   const rows = [];
   // Row 0: header labels
-  rows.push(data.table.cols.map(c => c.label || c.id || ''));
+  const headers = data.table.cols.map(c => c.label || c.id || '');
+  rows.push(headers);
   // Remaining rows: data
   for (const row of (data.table.rows || [])) {
     const cells = (row.c || []).map(cell => {
       if (!cell) return '';
-      // Prefer formatted string (mirrors what the sheet displays)
       if (cell.f != null) return String(cell.f);
       if (cell.v != null) return String(cell.v);
       return '';
     });
     rows.push(cells);
   }
+  // Debug: log headers with indices + first few rows
+  console.table(headers.map((h, i) => ({ index: i, header: h })));
+  console.log('Row 1 (likely benchmark):', rows[1]);
+  console.log('Row 2 (likely data row):', rows[2]);
+  console.log('Row 3:', rows[3]);
   return rows;
 }
 
@@ -522,16 +545,14 @@ function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function renderD7(promos) {
-  const hidden = getHidden();
-  const visible = promos.filter(p => !hidden.includes(p.assetCode));
-  if (!visible.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D7 Mature promos.</p>';
-
-  let rows = '';
-  for (const p of visible) {
+function d7Rows(promoList, cls = '') {
+  let out = '';
+  const bench = cls ? 'hidden-bench' : 'bench-row';
+  const data  = cls ? 'hidden-data'  : 'data-row';
+  for (const p of promoList) {
     const d = p.data, b = p.bench || [];
-    rows += `
-      <tr class="bench-row">
+    out += `
+      <tr class="${bench}">
         <td rowspan="2" class="left">${escHtml(p.angle)}</td>
         <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
@@ -544,7 +565,7 @@ function renderD7(promos) {
         <td>${fmt(b[C.D7H10_SS])}</td>
         ${actionCell(p.assetCode, 2)}
       </tr>
-      <tr class="data-row">
+      <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
         <td>${fmt(d[C.DATE])}</td>
         <td>${fmt(d[C.CPI])}</td>
@@ -562,6 +583,21 @@ function renderD7(promos) {
         ${cell(d[C.D7H5_SS],  b[C.D7H5_SS])}
         ${cell(d[C.D7H10_SS], b[C.D7H10_SS])}
       </tr>`;
+  }
+  return out;
+}
+
+function renderD7(promos) {
+  const hidden = getHidden();
+  const visible = promos.filter(p => !hidden.includes(p.assetCode));
+  const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
+  if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D7 Mature promos.</p>';
+
+  const colCount = 18;
+  let rows = d7Rows(visible);
+  if (hiddenP.length) {
+    rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
+    rows += d7Rows(hiddenP, 'hidden');
   }
 
   return `
@@ -597,23 +633,21 @@ function renderD7(promos) {
     </div>`;
 }
 
-function renderD3(promos) {
-  const hidden = getHidden();
-  const visible = promos.filter(p => !hidden.includes(p.assetCode));
-  if (!visible.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D3 Mature promos.</p>';
-
-  let rows = '';
-  for (const p of visible) {
+function d3Rows(promoList, cls = '') {
+  let out = '';
+  const bench = cls ? 'hidden-bench' : 'bench-row';
+  const data  = cls ? 'hidden-data'  : 'data-row';
+  for (const p of promoList) {
     const d = p.data, b = p.bench || [];
-    rows += `
-      <tr class="bench-row">
+    out += `
+      <tr class="${bench}">
         <td rowspan="2" class="left">${escHtml(p.angle)}</td>
         <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
         <td>${fmt(b[C.D3H5])}</td>
         ${actionCell(p.assetCode, 2)}
       </tr>
-      <tr class="data-row">
+      <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
         <td>${fmt(d[C.DATE])}</td>
         <td>${fmt(d[C.CPI])}</td>
@@ -623,6 +657,21 @@ function renderD3(promos) {
         ${cell(d[C.ACT_D3], b[C.ACT_D3])}
         ${cell(d[C.D3H5],   b[C.D3H5])}
       </tr>`;
+  }
+  return out;
+}
+
+function renderD3(promos) {
+  const hidden = getHidden();
+  const visible = promos.filter(p => !hidden.includes(p.assetCode));
+  const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
+  if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D3 Mature promos.</p>';
+
+  const colCount = 10;
+  let rows = d3Rows(visible);
+  if (hiddenP.length) {
+    rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
+    rows += d3Rows(hiddenP, 'hidden');
   }
 
   return `
@@ -647,28 +696,39 @@ function renderD3(promos) {
     </div>`;
 }
 
+function d0Row(p, hidden = false) {
+  const d = p.data, b = p.bench || [];
+  const isHid = getHidden().includes(p.assetCode);
+  const adminCtrl = adminMode
+    ? `<div style="display:flex;gap:4px;margin-bottom:3px">
+        <button class="btn-sm edit-btn" onclick="editAction('${esc(p.assetCode)}')">Edit</button>
+        <button class="btn-sm ${isHid ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(p.assetCode)}')">${isHid ? 'Show' : 'Hide'}</button>
+       </div>`
+    : '';
+  const cls = hidden ? 'hidden-data' : 'data-row';
+  return `
+    <tr class="${cls}">
+      <td class="left">${escHtml(p.angle)}</td>
+      <td>${escHtml(p.assetCode)}</td>
+      <td>${fmt(d[C.DATE])}</td>
+      <td>${fmt(d[C.CPI])}</td>
+      <td>${fmt(d[C.INSTALLS])}</td>
+      <td>${fmt(d[C.SPENT])}</td>
+      ${cell(d[C.ACT_D0], b[C.ACT_D0])}
+      <td class="action-cell left">${adminCtrl}${escHtml(getAction(p.assetCode))}</td>
+    </tr>`;
+}
+
 function renderD0(promos) {
   const hidden = getHidden();
   const visible = promos.filter(p => !hidden.includes(p.assetCode));
-  if (!visible.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D0 promos.</p>';
+  const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
+  if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D0 promos.</p>';
 
-  let rows = '';
-  for (const p of visible) {
-    const d = p.data, b = p.bench || [];
-    const adminCtrl = adminMode
-      ? `<div style="display:flex;gap:4px;margin-bottom:3px"><button class="btn-sm edit-btn" onclick="editAction('${esc(p.assetCode)}')">Edit</button><button class="btn-sm ${getHidden().includes(p.assetCode) ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(p.assetCode)}')">Hide</button></div>`
-      : '';
-    rows += `
-      <tr class="data-row">
-        <td class="left">${escHtml(p.angle)}</td>
-        <td>${escHtml(p.assetCode)}</td>
-        <td>${fmt(d[C.DATE])}</td>
-        <td>${fmt(d[C.CPI])}</td>
-        <td>${fmt(d[C.INSTALLS])}</td>
-        <td>${fmt(d[C.SPENT])}</td>
-        ${cell(d[C.ACT_D0], b[C.ACT_D0])}
-        <td class="action-cell left">${adminCtrl}${escHtml(getAction(p.assetCode))}</td>
-      </tr>`;
+  let rows = visible.map(p => d0Row(p)).join('');
+  if (hiddenP.length) {
+    rows += `<tr class="hidden-divider"><td colspan="8">Hidden</td></tr>`;
+    rows += hiddenP.map(p => d0Row(p, true)).join('');
   }
 
   return `
