@@ -279,25 +279,25 @@ const GID      = '217006698';
 const ADMIN_PW = 'PASSWORD';
 const STORE_KEY = 'bfu_admin_v1';
 
-// Column indices (0-based)
+// Column indices (0-based), derived from sheet column letters
 const C = {
-  ANGLE:    1,
-  METRIC:   2,
-  DATE:     3,
-  CPI:      4,
-  INSTALLS: 5,
-  SPENT:    6,
-  ACT_D0:   7,
-  ACT_D3:   8,
-  REC_D7:   13,
-  D3H3:     40,
-  D3H5:     41,
-  D7H5_O:   42,
-  D7H10_O:  49,
-  D7H5_SS:  46,
-  D7H10_SS: 43,   // was 47 (that index has D7_MAT); 43 pending confirmation
-  D3_MAT:   48,
-  D7_MAT:   47,   // confirmed from screenshot: D7 mature installs at 47
+  ANGLE:    1,   // B
+  METRIC:   2,   // C
+  DATE:     3,   // D
+  CPI:      4,   // E
+  INSTALLS: 5,   // F
+  SPENT:    6,   // G
+  ACT_D0:   7,   // H
+  ACT_D3:   8,   // I
+  REC_D7:   13,  // N
+  D3H3:     39,  // AN — Retention (Same Show) D3H3
+  D3H5:     40,  // AO — Retention (Same Show) D3H5
+  D7H5_O:   41,  // AP — Retention (Overall) D7H5
+  D7H10_O:  42,  // AQ — Retention (Overall) D7H10
+  D7H5_SS:  45,  // AT — Retention (Same Show) D7H5
+  D7H10_SS: 46,  // AU — Retention (Same Show) D7H10
+  D3_MAT:   47,  // AV — D3 Mature installs
+  D7_MAT:   48,  // AW — D7 Mature installs
 };
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
