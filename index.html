@@ -191,7 +191,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .new-ads-section { margin-top: 16px; }
-    .new-ads-title { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+    .new-ads-title { font-weight: 700; font-size: 18px; margin-bottom: 6px; color: #2a3445; }
     .new-ads-list { font-size: 13px; line-height: 1.8; }
     .new-ad-item {
       display: flex;
@@ -260,6 +260,10 @@
     <label>New Ad:</label>
     <input type="text" id="new-ad-input" placeholder="e.g. Flamborne Fists of Fire — Levels" onkeydown="if(event.key==='Enter')addNewAd()"/>
     <button class="btn" onclick="addNewAd()">Add</button>
+    <span style="width:1px;background:#ccc;align-self:stretch;margin:0 4px"></span>
+    <label>Queue:</label>
+    <input type="text" id="queue-input" placeholder="e.g. GU8250 — FLBM Dragon Battle v2" onkeydown="if(event.key==='Enter')addQueueItem()"/>
+    <button class="btn" onclick="addQueueItem()">Add</button>
     <button class="btn" onclick="toggleColMap()" style="margin-left:auto">Col Map</button>
   </div>
   <!-- Column map debug panel -->
@@ -363,10 +367,12 @@ function saveStore(s) { localStorage.setItem(STORE_KEY, JSON.stringify(s)); }
 function getActions()  { return getStore().actions  || {}; }
 function getHidden()   { return getStore().hidden   || []; }
 function getNewAds()   { return getStore().newAds   || []; }
+function getQueue()    { return getStore().queue     || []; }
 
 function setActions(v)  { const s = getStore(); s.actions = v;  saveStore(s); }
 function setHidden(v)   { const s = getStore(); s.hidden  = v;  saveStore(s); }
 function setNewAds(v)   { const s = getStore(); s.newAds  = v;  saveStore(s); }
+function setQueue(v)    { const s = getStore(); s.queue   = v;  saveStore(s); }
 
 // ── NEW ADS EXPIRY ────────────────────────────────────────────────────────────
 // An ad expires at 11:00 AM IST on the day following creation
@@ -563,6 +569,24 @@ function deleteNewAd(idx) {
   const ads = getNewAds();
   ads.splice(idx, 1);
   setNewAds(ads);
+  render();
+}
+function addQueueItem() {
+  if (!requireAdmin()) return;
+  const input = document.getElementById('queue-input');
+  const text = input.value.trim();
+  if (!text) return;
+  const q = getQueue();
+  q.push({ text, ts: Date.now() });
+  setQueue(q);
+  input.value = '';
+  render();
+}
+function deleteQueueItem(idx) {
+  if (!requireAdmin()) return;
+  const q = getQueue();
+  q.splice(idx, 1);
+  setQueue(q);
   render();
 }
 function requireAdmin() {
@@ -844,6 +868,24 @@ function renderNewAds() {
     </div>`;
 }
 
+function renderQueue() {
+  const q = getQueue();
+  if (!q.length && !adminMode) return '';
+  let items = '';
+  for (let i = 0; i < q.length; i++) {
+    const delBtn = adminMode
+      ? `<button class="new-ad-del" onclick="deleteQueueItem(${i})" title="Remove">&#x2715;</button>`
+      : '';
+    items += `<div class="new-ad-item">${delBtn}<span>${escHtml(q[i].text)}</span></div>`;
+  }
+  if (!items && adminMode) items = '<span style="color:var(--muted);font-size:12px">No entries — add one above.</span>';
+  return `
+    <div class="new-ads-section">
+      <div class="new-ads-title">Queue</div>
+      <div class="new-ads-list">${items}</div>
+    </div>`;
+}
+
 function render() {
   const content = document.getElementById('report-content');
   if (!promoData.d7.length && !promoData.d3.length && !promoData.d0.length) return;
@@ -856,6 +898,7 @@ function render() {
     <div class="section-title">D0 Promos</div>
     ${renderD0(promoData.d0)}
     ${renderNewAds()}
+    ${renderQueue()}
   `;
 }
 
