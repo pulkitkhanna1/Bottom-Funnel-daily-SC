@@ -610,8 +610,8 @@ function actionCell(assetCode, rowspan) {
     ? `<button class="btn-sm ${getHidden().includes(assetCode) ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(assetCode)}')">${getHidden().includes(assetCode) ? 'Show' : 'Hide'}</button>`
     : '';
   const adminBtns = adminMode ? `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${editBtn}${hideBtn}</div>` : '';
-  // Render \n as <br> so multi-line actions display correctly
-  const htmlText = escHtml(text).replace(/\n/g, '<br>');
+  // Render both real newlines and typed \n as <br>
+  const htmlText = escHtml(text).replace(/\\n|\n/g, '<br>');
   return `<td class="action-cell left" ${rsAttr}>${adminBtns}${htmlText}</td>`;
 }
 
@@ -790,7 +790,7 @@ function d0Row(p, hidden = false) {
       <td>${fmt(d[C.INSTALLS])}</td>
       <td>${fmt(d[C.SPENT])}</td>
       ${cellT(d[C.ACT_D0], 0.23)}
-      <td class="action-cell left">${adminCtrl}${escHtml(getAction(p.assetCode)).replace(/\n/g,'<br>')}</td>
+      <td class="action-cell left">${adminCtrl}${escHtml(getAction(p.assetCode)).replace(/\\n|\n/g,'<br>')}</td>
     </tr>`;
 }
 
