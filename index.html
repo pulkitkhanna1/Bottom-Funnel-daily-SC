@@ -150,7 +150,13 @@
     }
 
     .left { text-align: left; }
-    td.action-cell { text-align: left; min-width: 220px; max-width: 320px; word-break: break-word; }
+    td.action-cell, th.action-cell {
+      text-align: left;
+      min-width: 220px;
+      max-width: 320px;
+      word-break: break-word;
+      border-left: 2px dotted var(--line);
+    }
     .hidden-badge {
       display: inline-block;
       background: #ffcccc;
@@ -279,26 +285,70 @@ const GID      = '217006698';
 const ADMIN_PW = 'PASSWORD';
 const STORE_KEY = 'bfu_admin_v1';
 
-// Column indices (0-based), derived from sheet column letters
-const C = {
-  ANGLE:    1,   // B
-  METRIC:   2,   // C
-  DATE:     3,   // D
-  CPI:      4,   // E
-  INSTALLS: 5,   // F
-  SPENT:    6,   // G
-  ACT_D0:   7,   // H
-  ACT_D3:   8,   // I
-  REC_D7:   13,  // N
-  D3H3:     39,  // AN — Retention (Same Show) D3H3
-  D3H5:     40,  // AO — Retention (Same Show) D3H5
-  D7H5_O:   41,  // AP — Retention (Overall) D7H5
-  D7H10_O:  42,  // AQ — Retention (Overall) D7H10
-  D7H5_SS:  45,  // AT — Retention (Same Show) D7H5
-  D7H10_SS: 46,  // AU — Retention (Same Show) D7H10
-  D3_MAT:   47,  // AV — D3 Mature installs
-  D7_MAT:   48,  // AW — D7 Mature installs
+// Column indices — built dynamically from sheet header labels (see buildC below).
+// Fallback hardcoded values (by column letter) used if label matching fails.
+let C = {
+  ANGLE:    1,  METRIC:   2,  DATE:     3,  CPI:      4,
+  INSTALLS: 5,  SPENT:    6,  ACT_D0:   7,  ACT_D3:   8,
+  REC_D7:   13, D3H3:     39, D3H5:     40, D7H5_O:   41,
+  D7H10_O:  42, D7H5_SS:  45, D7H10_SS: 46, D3_MAT:   47, D7_MAT: 48,
 };
+
+// Column-letter → semantic key (used as fallback when labels are empty)
+const LETTER_TO_KEY = {
+  B:'ANGLE', C:'METRIC', D:'DATE', E:'CPI', F:'INSTALLS', G:'SPENT',
+  H:'ACT_D0', I:'ACT_D3', N:'REC_D7',
+  AN:'D3H3', AO:'D3H5', AP:'D7H5_O', AQ:'D7H10_O',
+  AT:'D7H5_SS', AU:'D7H10_SS', AV:'D3_MAT', AW:'D7_MAT',
+};
+
+// Label patterns — matched against GViz column labels (case-insensitive)
+// List order matters: duplicates (D7H5, D7H10) are resolved by first/second occurrence
+const LABEL_RULES = [
+  { key: 'ANGLE',    test: s => /\bangle\b/i.test(s) },
+  { key: 'METRIC',   test: s => /metrics|asset.?code/i.test(s) },
+  { key: 'DATE',     test: s => /start.?date/i.test(s) },
+  { key: 'CPI',      test: s => /cpi.on.cps/i.test(s) },
+  { key: 'INSTALLS', test: s => /^installs$/i.test(s.trim()) },
+  { key: 'SPENT',    test: s => /amount.?spent/i.test(s) },
+  { key: 'ACT_D0',   test: s => /\bd0\b/i.test(s) },
+  { key: 'ACT_D3',   test: s => /activation.*\bd3\b|\bd3\b.*activation/i.test(s) },
+  { key: 'REC_D7',   test: s => /recovery.*\bd7\b|\bd7\b.*recovery/i.test(s) },
+  { key: 'D3H3',     test: s => /d3h3/i.test(s) },
+  { key: 'D3H5',     test: s => /d3h5/i.test(s) },
+  { key: 'D7H5_O',   test: s => /overall.*d7h5|d7h5.*overall/i.test(s) },
+  { key: 'D7H10_O',  test: s => /overall.*d7h10|d7h10.*overall/i.test(s) },
+  { key: 'D7H5_SS',  test: s => /same.?show.*d7h5|d7h5.*same.?show/i.test(s) },
+  { key: 'D7H10_SS', test: s => /same.?show.*d7h10|d7h10.*same.?show/i.test(s) },
+  { key: 'D3_MAT',   test: s => /d3.?mature/i.test(s) },
+  { key: 'D7_MAT',   test: s => /d7.?mature/i.test(s) },
+];
+
+function buildC(cols) {
+  const result = {};
+  // 1. Try matching by column label text
+  const assigned = new Set();
+  for (const rule of LABEL_RULES) {
+    for (let i = 0; i < cols.length; i++) {
+      if (assigned.has(i)) continue;
+      const label = (cols[i].label || '').trim();
+      if (label && rule.test(label)) {
+        result[rule.key] = i;
+        assigned.add(i);
+        break;
+      }
+    }
+  }
+  // 2. Fill gaps using column letter (c.id) for any keys not yet found
+  for (const [letter, key] of Object.entries(LETTER_TO_KEY)) {
+    if (result[key] == null) {
+      const idx = cols.findIndex(c => c.id === letter);
+      if (idx !== -1) result[key] = idx;
+    }
+  }
+  console.log('Column map:', result);
+  return Object.keys(result).length > 5 ? result : C; // safety: keep fallback if almost nothing matched
+}
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let adminMode  = false;
@@ -354,8 +404,8 @@ function fetchGvizJSONP() {
       if (!data || !data.table) { reject(new Error('Empty response from Google Sheets')); return; }
       resolve(gvizToRows(data));
     };
-    // tqx responseHandler sets the JSONP callback name
-    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:${cb}&gid=${GID}`;
+    // headers=2: treat first 2 sheet rows as column labels (picks up sub-headers like D3H3, D7H5, etc.)
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:${cb}&gid=${GID}&headers=2`;
     document.head.appendChild(script);
   });
 }
@@ -364,8 +414,11 @@ function fetchGvizJSONP() {
 let _debugRows = []; // stored for admin column-map panel
 
 function gvizToRows(data) {
+  const cols = data.table.cols;
+  // Build column index map from header labels (+ letter fallback)
+  C = buildC(cols);
   const rows = [];
-  const headers = data.table.cols.map(c => c.label || c.id || '');
+  const headers = cols.map(c => c.label || c.id || '');
   rows.push(headers);
   for (const row of (data.table.rows || [])) {
     const cells = (row.c || []).map(cell => {
