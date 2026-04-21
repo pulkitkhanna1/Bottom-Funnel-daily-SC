@@ -243,7 +243,6 @@
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const SHEET_ID = '1FbP_aQMe37UzHrvPPQSDu3qJoGHzzPENWV66GkzPRZw';
 const GID      = '217006698';
-const CSV_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GID}`;
 const ADMIN_PW = 'PASSWORD';
 const STORE_KEY = 'bfu_admin_v1';
 
@@ -305,24 +304,45 @@ function cleanExpiredAds() {
   return fresh;
 }
 
-// ── CSV PARSER ────────────────────────────────────────────────────────────────
-function parseCSV(text) {
+// ── JSONP LOADER ──────────────────────────────────────────────────────────────
+// Uses a <script> tag so it works from file:// (no CORS/fetch restrictions)
+function fetchGvizJSONP() {
+  return new Promise((resolve, reject) => {
+    const cb = '__gviz_' + Date.now();
+    const script = document.createElement('script');
+    script.onerror = () => {
+      delete window[cb];
+      document.head.removeChild(script);
+      reject(new Error('Script load failed — check network or sheet visibility'));
+    };
+    window[cb] = function(data) {
+      delete window[cb];
+      document.head.removeChild(script);
+      if (!data || !data.table) { reject(new Error('Empty response from Google Sheets')); return; }
+      resolve(gvizToRows(data));
+    };
+    // tqx responseHandler sets the JSONP callback name
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:${cb}&gid=${GID}`;
+    document.head.appendChild(script);
+  });
+}
+
+// Convert GViz table object → 2-D array of strings (same shape as CSV rows)
+function gvizToRows(data) {
   const rows = [];
-  let row = [], cell = '', inQ = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQ) {
-      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
-      else if (ch === '"') inQ = false;
-      else cell += ch;
-    } else {
-      if (ch === '"') { inQ = true; }
-      else if (ch === ',') { row.push(cell.trim()); cell = ''; }
-      else if (ch === '\n') { row.push(cell.trim()); if (row.some(Boolean)) rows.push(row); row = []; cell = ''; }
-      else if (ch !== '\r') cell += ch;
-    }
+  // Row 0: header labels
+  rows.push(data.table.cols.map(c => c.label || c.id || ''));
+  // Remaining rows: data
+  for (const row of (data.table.rows || [])) {
+    const cells = (row.c || []).map(cell => {
+      if (!cell) return '';
+      // Prefer formatted string (mirrors what the sheet displays)
+      if (cell.f != null) return String(cell.f);
+      if (cell.v != null) return String(cell.v);
+      return '';
+    });
+    rows.push(cells);
   }
-  if (cell !== '' || row.length) { row.push(cell.trim()); if (row.some(Boolean)) rows.push(row); }
   return rows;
 }
 
@@ -705,10 +725,7 @@ async function loadData() {
   setStatus('<span class="spinner"></span> Fetching data from Google Sheets…');
   document.getElementById('refresh-btn').disabled = true;
   try {
-    const res = await fetch(CSV_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    const rows = parseCSV(text);
+    const rows = await fetchGvizJSONP();
     if (rows.length < 2) throw new Error('No data rows returned.');
     const promos = buildPromos(rows);
     promoData = categorize(promos);
@@ -716,7 +733,7 @@ async function loadData() {
     setStatus(`Loaded ${total} promos — last updated ${new Date().toLocaleTimeString()}`);
     render();
   } catch (e) {
-    setStatus(`Failed to load data: ${e.message}. Check that the sheet is public and reload.`, true);
+    setStatus(`Failed to load data: ${e.message}. Make sure the Google Sheet is set to "Anyone with the link can view".`, true);
   } finally {
     document.getElementById('refresh-btn').disabled = false;
   }
