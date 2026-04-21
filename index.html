@@ -190,6 +190,38 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* AI suggestion column */
+    td.ai-cell {
+      text-align: left;
+      min-width: 200px;
+      max-width: 280px;
+      word-break: break-word;
+      border-left: 2px dotted var(--line);
+      font-size: 12px;
+      color: #1a3a7a;
+    }
+    th.ai-cell { border-left: 2px dotted var(--line); }
+    .ai-suggest-btn {
+      background: #e8eef8;
+      border: 1.5px solid #5c85d6;
+      color: #1a3a7a;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .ai-suggest-btn:hover { background: #d0dcf5; }
+    .ai-suggest-btn:disabled { opacity: 0.5; cursor: wait; }
+    .ai-regen-btn {
+      background: none; border: none; color: #999;
+      font-size: 10px; cursor: pointer; padding: 0; margin-top: 4px;
+      font-family: 'Space Grotesk', sans-serif; display: block;
+    }
+    .ai-regen-btn:hover { color: #1a3a7a; }
+
     .new-ads-section { margin-top: 16px; }
     .new-ads-title { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
     .new-ads-list { font-size: 13px; line-height: 1.8; }
@@ -353,6 +385,7 @@ function buildC(cols) {
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let adminMode  = false;
 let promoData  = { d7: [], d3: [], d0: [] };
+window._promoMap = {}; // assetCode → promo object, used by AI suggest buttons
 
 // ── ADMIN STORAGE ─────────────────────────────────────────────────────────────
 function getStore() {
@@ -637,6 +670,7 @@ function d7Rows(promoList, cls = '') {
         <td>${fmt(b[C.D7H5_SS])}</td>
         <td>${fmt(b[C.D7H10_SS])}</td>
         ${actionCell(p.assetCode, 2)}
+        ${aiCell(p, 'D7', 2)}
       </tr>
       <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
@@ -692,6 +726,7 @@ function renderD7(promos) {
             <th colspan="2">Retention (Overall)</th>
             <th colspan="2">Retention (Same Show)</th>
             <th rowspan="2" class="action-cell">Action</th>
+            <th rowspan="2" class="ai-cell">AI Suggested Action</th>
           </tr>
           <tr class="sub">
             <th>D0</th><th>D3</th>
@@ -719,6 +754,7 @@ function d3Rows(promoList, cls = '') {
         <td>${fmt(b[C.ACT_D3])}</td>
         <td>${fmt(b[C.D3H5])}</td>
         ${actionCell(p.assetCode, 2)}
+        ${aiCell(p, 'D3', 2)}
       </tr>
       <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
@@ -762,6 +798,7 @@ function renderD3(promos) {
             <th>Activation D3</th>
             <th>D3H5 SS</th>
             <th class="action-cell">Action</th>
+            <th class="ai-cell">AI Suggested Action</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -789,6 +826,7 @@ function d0Row(p, hidden = false) {
       <td>${fmt(d[C.SPENT])}</td>
       ${cellT(d[C.ACT_D0], 0.23)}
       <td class="action-cell left">${adminCtrl}${escHtml(getAction(p.assetCode))}</td>
+      ${aiCell(p, 'D0', 1)}
     </tr>`;
 }
 
@@ -817,6 +855,7 @@ function renderD0(promos) {
             <th>Amount spent</th>
             <th>Activation D0</th>
             <th class="action-cell">Action</th>
+            <th class="ai-cell">AI Suggested Action</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -872,6 +911,9 @@ async function loadData() {
     if (rows.length < 2) throw new Error('No data rows returned.');
     const promos = buildPromos(rows);
     promoData = categorize(promos);
+    // Build global lookup used by AI suggest button callbacks
+    window._promoMap = {};
+    [...promoData.d7, ...promoData.d3, ...promoData.d0].forEach(p => { window._promoMap[p.assetCode] = p; });
     const total = promoData.d7.length + promoData.d3.length + promoData.d0.length;
     setStatus(`Loaded ${total} promos — last updated ${new Date().toLocaleTimeString()}`);
     render();
@@ -909,6 +951,88 @@ function toggleColMap() {
   }
   document.getElementById('col-map-body').innerHTML = html;
   panel.style.display = 'block';
+}
+
+// ── AI SUGGESTIONS ────────────────────────────────────────────────────────────
+const AI_KEY = 'bfu_ai_v1';
+
+function getAISuggestions() {
+  try { return JSON.parse(localStorage.getItem(AI_KEY)) || {}; }
+  catch { return {}; }
+}
+function saveAISuggestion(code, text) {
+  const s = getAISuggestions(); s[code] = text;
+  localStorage.setItem(AI_KEY, JSON.stringify(s));
+}
+function clearAISuggestion(code) {
+  const s = getAISuggestions(); delete s[code];
+  localStorage.setItem(AI_KEY, JSON.stringify(s));
+}
+
+function buildMetrics(p, maturity) {
+  const d = p.data, b = p.bench || [];
+  const pairs = [];
+  const add = (label, vi, bi) => {
+    const v = d[vi], bv = b[bi];
+    if (v && v !== '—') pairs.push({
+      label, value: v, benchmark: bv || '—',
+      status: bv ? (parseVal(v) >= parseVal(bv) ? 'meets' : 'miss') : 'n/a'
+    });
+  };
+  add('Activation D0', C.ACT_D0, C.ACT_D0);
+  add('Activation D3', C.ACT_D3, C.ACT_D3);
+  if (maturity !== 'D0') add('Recovery D7', C.REC_D7, C.REC_D7);
+  if (maturity === 'D7') {
+    add('D3H3', C.D3H3, C.D3H3); add('D3H5', C.D3H5, C.D3H5);
+    add('D7H5 Overall', C.D7H5_O, C.D7H5_O); add('D7H10 Overall', C.D7H10_O, C.D7H10_O);
+    add('D7H5 SS', C.D7H5_SS, C.D7H5_SS); add('D7H10 SS', C.D7H10_SS, C.D7H10_SS);
+  } else if (maturity === 'D3') {
+    add('D3H5 SS', C.D3H5, C.D3H5);
+  }
+  return pairs;
+}
+
+async function fetchAISuggestion(code, btn, cellEl, p, maturity) {
+  btn.disabled = true; btn.textContent = 'Thinking…';
+  const days = daysSinceStart(p.data[C.DATE]);
+  try {
+    const resp = await fetch('/api/suggest', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        angle: p.angle, assetCode: code, maturity,
+        days: days ?? '?',
+        metrics: buildMetrics(p, maturity),
+      }),
+    });
+    const { suggestion, error } = await resp.json();
+    if (error) throw new Error(error);
+    saveAISuggestion(code, suggestion);
+    renderAICell(cellEl, code, suggestion);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '✦ Suggest';
+    cellEl.title = e.message;
+  }
+}
+
+function renderAICell(el, code, text) {
+  el.innerHTML = escHtml(text) +
+    `<button class="ai-regen-btn" onclick="regenAI('${esc(code)}',this)">↻ regenerate</button>`;
+}
+
+function regenAI(code, btn) {
+  clearAISuggestion(code);
+  render(); // re-render so cell shows the button again
+}
+
+function aiCell(p, maturity, rowspan) {
+  const code = p.assetCode;
+  const cached = getAISuggestions()[code];
+  const rs = rowspan > 1 ? `rowspan="${rowspan}"` : '';
+  const inner = cached
+    ? escHtml(cached) + `<button class="ai-regen-btn" onclick="regenAI('${esc(code)}',this)">↻ regenerate</button>`
+    : `<button class="ai-suggest-btn" onclick="(async()=>{await fetchAISuggestion('${esc(code)}',this,this.closest('td'),window._promoMap?.['${esc(code)}'],'${maturity}')})()">✦ Suggest</button>`;
+  return `<td class="ai-cell" ${rs}>${inner}</td>`;
 }
 
 // ── DEFAULT ACTIONS ───────────────────────────────────────────────────────────
