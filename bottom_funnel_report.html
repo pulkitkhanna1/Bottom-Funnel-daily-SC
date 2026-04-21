@@ -851,8 +851,33 @@ function toggleColMap() {
   panel.style.display = 'block';
 }
 
+// ── DEFAULT ACTIONS ───────────────────────────────────────────────────────────
+// Pre-seeded from the 16 April reference report; editable via admin panel.
+const DEFAULT_ACTIONS = {
+  'GU7852':   'Passed to Scaling for ROAS',
+  'GU7851':   'Use as merge with Dragon Battle as mentioned by Shashank',
+  'GU8131':   '* Running until $10k spends\n* To be merged with Dragon Battle as mentioned by Shashank',
+  'GU5387':   'Planned for pickup in Week 1 of May, after 50 hours of content has gone live, ensuring readiness to scale.',
+  'GU7859':   '* Use as Q1 merge on UK base\n* FYI: Scaling TSS UK Base',
+  'GU8120':   'Early results are positive - Keep spending to 200 installs for next update on retention',
+  'GU8143':   'Early results are positive - Keep spending to 200 installs for next update on retention',
+  'GU8142':   'Early results are positive - Keep spending to 200 installs for next update on retention',
+  'APR26465': 'Activation has improved, waiting for cohort to mature for the downstream bottom funnel metrics',
+  'GU8200':   'Published to CPS on April 16',
+};
+
+function seedDefaultActions() {
+  const actions = getActions();
+  let changed = false;
+  for (const [code, text] of Object.entries(DEFAULT_ACTIONS)) {
+    if (!(code in actions)) { actions[code] = text; changed = true; }
+  }
+  if (changed) setActions(actions);
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (function init() {
+  seedDefaultActions();
   // Set today's date
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric'
