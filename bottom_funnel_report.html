@@ -254,6 +254,21 @@
     <label>New Ad:</label>
     <input type="text" id="new-ad-input" placeholder="e.g. Flamborne Fists of Fire — Levels" onkeydown="if(event.key==='Enter')addNewAd()"/>
     <button class="btn" onclick="addNewAd()">Add</button>
+    <button class="btn" onclick="toggleColMap()" style="margin-left:auto">Col Map</button>
+  </div>
+  <!-- Column map debug panel -->
+  <div id="col-map-panel" style="display:none;margin:10px 0;border:2px solid #141a24;background:#fff;overflow-x:auto;max-height:420px;overflow-y:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:'Space Grotesk',sans-serif">
+      <thead>
+        <tr style="background:#ead37c;position:sticky;top:0">
+          <th style="padding:4px 8px;border-right:1px solid #ccc;border-bottom:2px solid #141a24">Index</th>
+          <th style="padding:4px 8px;border-right:1px solid #ccc;border-bottom:2px solid #141a24">Header</th>
+          <th style="padding:4px 8px;border-right:1px solid #ccc;border-bottom:2px solid #141a24">Row 1 (Benchmark)</th>
+          <th style="padding:4px 8px;border-bottom:2px solid #141a24">Row 2 (Data)</th>
+        </tr>
+      </thead>
+      <tbody id="col-map-body"></tbody>
+    </table>
   </div>
 </main>
 
@@ -346,12 +361,12 @@ function fetchGvizJSONP() {
 }
 
 // Convert GViz table object → 2-D array of strings (same shape as CSV rows)
+let _debugRows = []; // stored for admin column-map panel
+
 function gvizToRows(data) {
   const rows = [];
-  // Row 0: header labels
   const headers = data.table.cols.map(c => c.label || c.id || '');
   rows.push(headers);
-  // Remaining rows: data
   for (const row of (data.table.rows || [])) {
     const cells = (row.c || []).map(cell => {
       if (!cell) return '';
@@ -361,11 +376,7 @@ function gvizToRows(data) {
     });
     rows.push(cells);
   }
-  // Debug: log headers with indices + first few rows
-  console.table(headers.map((h, i) => ({ index: i, header: h })));
-  console.log('Row 1 (likely benchmark):', rows[1]);
-  console.log('Row 2 (likely data row):', rows[2]);
-  console.log('Row 3:', rows[3]);
+  _debugRows = rows;
   return rows;
 }
 
@@ -414,6 +425,8 @@ function categorize(promos) {
     else if (d3m !== null && d3m > 0) d3.push(p);
     else d0.push(p);
   }
+  const byAngle = (a, b) => a.angle.localeCompare(b.angle);
+  d7.sort(byAngle); d3.sort(byAngle); d0.sort(byAngle);
   return { d7, d3, d0 };
 }
 
@@ -807,6 +820,35 @@ async function loadData() {
   } finally {
     document.getElementById('refresh-btn').disabled = false;
   }
+}
+
+// ── COLUMN MAP DEBUG ──────────────────────────────────────────────────────────
+// Currently mapped indices for highlighting in the panel
+const MAPPED = new Set(Object.values(C));
+
+function toggleColMap() {
+  const panel = document.getElementById('col-map-panel');
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+  const r0 = _debugRows[0] || [];
+  const r1 = _debugRows[1] || [];
+  const r2 = _debugRows[2] || [];
+  const len = Math.max(r0.length, r1.length, r2.length);
+  let html = '';
+  for (let i = 0; i < len; i++) {
+    const h  = r0[i] || '';
+    const v1 = r1[i] || '';
+    const v2 = r2[i] || '';
+    if (!h && !v1 && !v2) continue; // skip fully empty columns
+    const hi = MAPPED.has(i) ? 'background:#fff3b0' : '';
+    html += `<tr style="${hi}">
+      <td style="padding:3px 8px;border-right:1px solid #eee;border-bottom:1px solid #eee;font-weight:700;color:#555">${i}</td>
+      <td style="padding:3px 8px;border-right:1px solid #eee;border-bottom:1px solid #eee;color:#888">${escHtml(h)}</td>
+      <td style="padding:3px 8px;border-right:1px solid #eee;border-bottom:1px solid #eee">${escHtml(v1)}</td>
+      <td style="padding:3px 8px;border-bottom:1px solid #eee">${escHtml(v2)}</td>
+    </tr>`;
+  }
+  document.getElementById('col-map-body').innerHTML = html;
+  panel.style.display = 'block';
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
