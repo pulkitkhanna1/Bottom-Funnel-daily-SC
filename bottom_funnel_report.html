@@ -372,12 +372,22 @@ function buildPromos(rows) {
   return promos;
 }
 
+function daysSinceStart(dateStr) {
+  if (!dateStr || dateStr === '#N/A' || !dateStr.trim()) return null;
+  const parts = dateStr.trim().split('/');
+  if (parts.length !== 3) return null;
+  const [m, d, y] = parts.map(Number);
+  const start = new Date(y, m - 1, d);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.floor((today - start) / 86400000);
+}
+
 function categorize(promos) {
   const d7 = [], d3 = [], d0 = [];
   for (const p of promos) {
-    const d7m = parseVal(p.data[C.D7_MAT]);
-    const d3m = parseVal(p.data[C.D3_MAT]);
-    if (d7m !== null && d7m > 0) d7.push(p);
+    const days = daysSinceStart(p.data[C.DATE]);
+    const d3m  = parseVal(p.data[C.D3_MAT]);
+    if (days !== null && days > 12) d7.push(p);
     else if (d3m !== null && d3m > 0) d3.push(p);
     else d0.push(p);
   }
