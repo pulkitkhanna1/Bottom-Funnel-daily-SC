@@ -86,6 +86,18 @@
     .btn-sm.hide-btn { border-color: #e57373; color: #c62828; }
     .btn-sm.show-btn { border-color: #66bb6a; color: #2e7d32; }
     .btn-sm.edit-btn { border-color: #5c85d6; color: #1a3a7a; }
+    .action-textarea {
+      width: 100%;
+      min-height: 60px;
+      font-size: 12px;
+      font-family: inherit;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+      padding: 4px 6px;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+    .action-textarea:focus { outline: none; border-color: #5c85d6; }
 
     .section-title {
       margin: 16px 0 4px;
@@ -779,15 +791,14 @@ function cellT(val, threshold) {
 function getAction(assetCode) {
   return getActions()[assetCode] || '';
 }
-function editAction(assetCode) {
-  if (!requireAdmin()) return;
-  const cur = getAction(assetCode);
-  const val = prompt(`Action / notes for ${assetCode}:`, cur);
-  if (val === null) return; // cancelled
-  const actions = getActions();
-  actions[assetCode] = val;
-  setActions(actions);
-  render();
+const _actionTimers = {};
+function saveActionInline(assetCode, value) {
+  clearTimeout(_actionTimers[assetCode]);
+  _actionTimers[assetCode] = setTimeout(() => {
+    const actions = getActions();
+    actions[assetCode] = value;
+    setActions(actions);
+  }, 600);
 }
 function toggleHide(assetCode) {
   if (!requireAdmin()) return;
@@ -873,18 +884,18 @@ function actionCell(p, rowspan) {
   const assetCode = typeof p === 'string' ? p : p.assetCode;
   const text = getAction(assetCode);
   const rsAttr = rowspan > 1 ? `rowspan="${rowspan}"` : '';
-  const editBtn = adminMode
-    ? `<button class="btn-sm edit-btn" onclick="editAction('${esc(assetCode)}')">Edit</button>`
-    : '';
   const hideBtn = adminMode
     ? `<button class="btn-sm ${getHidden().includes(assetCode) ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(assetCode)}')">${getHidden().includes(assetCode) ? 'Show' : 'Hide'}</button>`
     : '';
   const delBtn = adminMode && p._manual
     ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
     : '';
-  const adminBtns = adminMode ? `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${editBtn}${hideBtn}${delBtn}</div>` : '';
+  if (adminMode) {
+    const adminBtns = `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${hideBtn}${delBtn}</div>`;
+    return `<td class="action-cell left" ${rsAttr}>${adminBtns}<textarea class="action-textarea" oninput="saveActionInline('${esc(assetCode)}',this.value)">${escHtml(text)}</textarea></td>`;
+  }
   const htmlText = escHtml(text).replace(/\\n|\n/g, '<br>');
-  return `<td class="action-cell left" ${rsAttr}>${adminBtns}${htmlText}</td>`;
+  return `<td class="action-cell left" ${rsAttr}>${htmlText}</td>`;
 }
 
 function esc(s) { return s.replace(/'/g, "\\'"); }
@@ -1051,7 +1062,6 @@ function d0Row(p, hidden = false) {
     : '';
   const adminCtrl = adminMode
     ? `<div style="display:flex;gap:4px;margin-bottom:3px">
-        <button class="btn-sm edit-btn" onclick="editAction('${esc(p.assetCode)}')">Edit</button>
         <button class="btn-sm ${isHid ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(p.assetCode)}')">${isHid ? 'Show' : 'Hide'}</button>
         ${delBtn}
        </div>`
@@ -1066,7 +1076,10 @@ function d0Row(p, hidden = false) {
       <td>${fmt(d[C.INSTALLS])}</td>
       <td>${fmt(d[C.SPENT])}</td>
       ${cellT(d[C.ACT_D0], 0.23)}
-      <td class="action-cell left">${adminCtrl}${escHtml(getAction(p.assetCode)).replace(/\\n|\n/g,'<br>')}</td>
+      <td class="action-cell left">${adminCtrl}${adminMode
+        ? `<textarea class="action-textarea" oninput="saveActionInline('${esc(p.assetCode)}',this.value)">${escHtml(getAction(p.assetCode))}</textarea>`
+        : escHtml(getAction(p.assetCode)).replace(/\\n|\n/g,'<br>')
+      }</td>
     </tr>`;
 }
 
@@ -1272,8 +1285,7 @@ function seedDefaultActions() {
     }
   }
 
-  // 3. Seed defaults + render (same as before)
-  seedDefaultActions();
+  // 3. Render
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric'
   });
