@@ -459,10 +459,14 @@ let _sb      = null;   // Supabase client (null = not configured)
 let _sbReady = false;  // true once initial fetch succeeded
 let _cache   = {};     // in-memory store; all getters read from here synchronously
 
+const SB_URL = 'https://ktufdpuaoqfueutqvqiw.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0dWZkcHVhb3FmdWV1dHF2cWl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5Mjc1MTAsImV4cCI6MjA5MjUwMzUxMH0.CUDdBN_0yXb_Z_rpkCCVRoavip0-U7-jdrtjIeejRFk';
+
 function getSbConfig() {
+  // Allow URL hash override; fall back to hardcoded constants
   const params = new URLSearchParams(window.location.hash.slice(1));
-  const url = params.get('sbUrl');
-  const key = params.get('sbKey');
+  const url = params.get('sbUrl') || SB_URL;
+  const key = params.get('sbKey') || SB_KEY;
   return (url && key) ? { url, key } : null;
 }
 
