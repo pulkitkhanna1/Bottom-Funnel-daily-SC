@@ -1235,7 +1235,7 @@ function seedDefaultActions() {
   // Always write defaults so updates here propagate on next page load
   let changed = false;
   for (const [code, text] of Object.entries(DEFAULT_ACTIONS)) {
-    if (actions[code] !== text) { actions[code] = text; changed = true; }
+    if (!(code in actions)) { actions[code] = text; changed = true; }
   }
   if (changed) setActions(actions);
 }
