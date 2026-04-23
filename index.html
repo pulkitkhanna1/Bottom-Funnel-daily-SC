@@ -238,9 +238,83 @@
       .sub th { font-size: 11px; }
       tbody td { font-size: 12px; }
     }
+
+    /* ── Add Promo Modal ──────────────────────────────────────────────────── */
+    #promo-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+    }
+    .modal-card {
+      position: relative;
+      background: #fff;
+      border: 2px solid var(--line);
+      border-radius: 6px;
+      padding: 24px;
+      width: min(500px, 95vw);
+      max-height: 85vh;
+      overflow-y: auto;
+      z-index: 1;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+    .modal-header span { font-size: 17px; font-weight: 700; }
+    .modal-header button {
+      background: none;
+      border: none;
+      font-size: 22px;
+      cursor: pointer;
+      color: var(--muted);
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .form-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 9px;
+      gap: 10px;
+    }
+    .form-row label {
+      width: 175px;
+      flex-shrink: 0;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .form-row input {
+      flex: 1;
+      padding: 5px 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      border: 1.5px solid #aaa;
+      border-radius: 3px;
+    }
+    .form-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      margin: 14px 0 8px;
+      border-bottom: 1px solid #e0e0e0;
+      padding-bottom: 4px;
+    }
+
   </style>
 </head>
 <body>
+
 <main class="page">
   <div class="top">
     <h1>Bottom Funnel Update</h1>
@@ -369,10 +443,124 @@ function getHidden()   { return getStore().hidden   || []; }
 function getNewAds()   { return getStore().newAds   || []; }
 function getQueue()    { return getStore().queue     || []; }
 
-function setActions(v)  { const s = getStore(); s.actions = v;  saveStore(s); }
-function setHidden(v)   { const s = getStore(); s.hidden  = v;  saveStore(s); }
-function setNewAds(v)   { const s = getStore(); s.newAds  = v;  saveStore(s); }
-function setQueue(v)    { const s = getStore(); s.queue   = v;  saveStore(s); }
+function setActions(v)      { const s = getStore(); s.actions      = v; saveStore(s); }
+function setHidden(v)       { const s = getStore(); s.hidden       = v; saveStore(s); }
+function setNewAds(v)       { const s = getStore(); s.newAds       = v; saveStore(s); }
+function setQueue(v)        { const s = getStore(); s.queue        = v; saveStore(s); }
+function getManualPromos()  { const mp = getStore().manualPromos || {}; return { d7: mp.d7||[], d3: mp.d3||[], d0: mp.d0||[] }; }
+function setManualPromos(v) { const s = getStore(); s.manualPromos = v; saveStore(s); }
+
+// Convert a stored manual promo → promo object used by rendering functions
+function manualToPromo(m) {
+  const pct = v => v !== '' && v != null ? v + '%' : '';
+  const d = [];
+  d[C.DATE]     = m.date     || '';
+  d[C.CPI]      = m.cpi      ? '$' + m.cpi      : '';
+  d[C.INSTALLS] = m.installs || '';
+  d[C.SPENT]    = m.spent    ? '$' + m.spent     : '';
+  d[C.ACT_D0]   = pct(m.actD0);
+  d[C.ACT_D3]   = pct(m.actD3);
+  d[C.REC_D7]   = pct(m.recD7);
+  d[C.D3_MAT]   = m.d3Mat   || '';
+  d[C.D7_MAT]   = m.d7Mat   || '';
+  d[C.D3H3]     = pct(m.d3h3);
+  // D3 bucket: D3H5 slot holds D3H5 SS; D7 bucket: D3H5 slot holds D3H5 Overall
+  d[C.D3H5]     = m.bucket === 'd3' ? pct(m.d3h5ss) : pct(m.d3h5);
+  d[C.D7H5_O]   = pct(m.d7h5o);
+  d[C.D7H10_O]  = pct(m.d7h10o);
+  d[C.D7H5_SS]  = pct(m.d7h5ss);
+  d[C.D7H10_SS] = pct(m.d7h10ss);
+  return { angle: m.angle, assetCode: m.assetCode, data: d, bench: [], _manual: true, _id: m.id, _bucket: m.bucket };
+}
+
+// ── MANUAL PROMO MODAL ────────────────────────────────────────────────────────
+let _modalBucket = 'd0';
+
+function openAddPromoModal(bucket) {
+  if (!requireAdmin()) return;
+  _modalBucket = bucket;
+  document.getElementById('modal-title').textContent =
+    'Add ' + (bucket === 'd7' ? 'D7 Mature' : bucket === 'd3' ? 'D3 Mature' : 'D0') + ' Promo';
+  document.getElementById('promo-form').reset();
+
+  // Show/hide rows by bucket
+  const show = id => { const el = document.getElementById(id); if (el) el.style.display = ''; };
+  const hide  = id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
+
+  // sections
+  show('pf-sec-d0');    show('pf-sec-d3d7');  show('pf-sec-d7');
+
+  // d0 fields
+  bucket === 'd0' ? show('pf-row-actd0') : hide('pf-row-actd0');
+
+  // d3 + d7 fields
+  const d3d7 = bucket === 'd3' || bucket === 'd7';
+  d3d7 ? show('pf-row-d3mat')  : hide('pf-row-d3mat');
+  d3d7 ? show('pf-row-actd3')  : hide('pf-row-actd3');
+  bucket === 'd3' ? show('pf-row-d3h5ss') : hide('pf-row-d3h5ss');
+
+  // d7-only fields
+  const d7only = bucket === 'd7';
+  d7only ? show('pf-row-actd0')  : (bucket !== 'd0' ? hide('pf-row-actd0') : null);
+  d7only ? show('pf-row-d7mat')  : hide('pf-row-d7mat');
+  d7only ? show('pf-row-recd7')  : hide('pf-row-recd7');
+  d7only ? show('pf-row-d3h3')   : hide('pf-row-d3h3');
+  d7only ? show('pf-row-d3h5')   : hide('pf-row-d3h5');
+  d7only ? show('pf-row-d7h5o')  : hide('pf-row-d7h5o');
+  d7only ? show('pf-row-d7h10o') : hide('pf-row-d7h10o');
+  d7only ? show('pf-row-d7h5ss') : hide('pf-row-d7h5ss');
+  d7only ? show('pf-row-d7h10ss'): hide('pf-row-d7h10ss');
+
+  // hide empty sections
+  if (bucket === 'd0')  { hide('pf-sec-d3d7'); hide('pf-sec-d7'); }
+  if (bucket === 'd3')  { hide('pf-sec-d0');   hide('pf-sec-d7'); }
+  if (bucket === 'd7')  { hide('pf-sec-d0'); }
+
+  document.getElementById('promo-modal').style.display = '';
+}
+
+function closePromoModal() {
+  document.getElementById('promo-modal').style.display = 'none';
+}
+
+function saveManualPromo(e) {
+  e.preventDefault();
+  const g = id => document.getElementById(id).value.trim();
+  const mp = getManualPromos();
+  mp[_modalBucket].push({
+    id:       Date.now().toString(),
+    bucket:   _modalBucket,
+    angle:    g('pf-angle'),
+    assetCode: g('pf-code'),
+    date:     g('pf-date'),
+    cpi:      g('pf-cpi'),
+    installs: g('pf-installs'),
+    spent:    g('pf-spent'),
+    actD0:    g('pf-actd0'),
+    actD3:    g('pf-actd3'),
+    recD7:    g('pf-recd7'),
+    d3Mat:    g('pf-d3mat'),
+    d7Mat:    g('pf-d7mat'),
+    d3h3:     g('pf-d3h3'),
+    d3h5:     g('pf-d3h5'),
+    d3h5ss:   g('pf-d3h5ss'),
+    d7h5o:    g('pf-d7h5o'),
+    d7h10o:   g('pf-d7h10o'),
+    d7h5ss:   g('pf-d7h5ss'),
+    d7h10ss:  g('pf-d7h10ss'),
+  });
+  setManualPromos(mp);
+  closePromoModal();
+  render();
+}
+
+function deleteManualPromo(id, bucket) {
+  if (!requireAdmin()) return;
+  const mp = getManualPromos();
+  mp[bucket] = mp[bucket].filter(m => m.id !== id);
+  setManualPromos(mp);
+  render();
+}
 
 // ── NEW ADS EXPIRY ────────────────────────────────────────────────────────────
 // An ad expires at 11:00 AM IST on the day following creation
@@ -624,17 +812,20 @@ function updateAdminUI() {
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
-function actionCell(assetCode, rowspan) {
+function actionCell(p, rowspan) {
+  const assetCode = typeof p === 'string' ? p : p.assetCode;
   const text = getAction(assetCode);
   const rsAttr = rowspan > 1 ? `rowspan="${rowspan}"` : '';
   const editBtn = adminMode
-    ? `<button class="btn-sm edit-btn" onclick="editAction('${esc(assetCode)}')">Edit</button> `
+    ? `<button class="btn-sm edit-btn" onclick="editAction('${esc(assetCode)}')">Edit</button>`
     : '';
   const hideBtn = adminMode
     ? `<button class="btn-sm ${getHidden().includes(assetCode) ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(assetCode)}')">${getHidden().includes(assetCode) ? 'Show' : 'Hide'}</button>`
     : '';
-  const adminBtns = adminMode ? `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${editBtn}${hideBtn}</div>` : '';
-  // Render both real newlines and typed \n as <br>
+  const delBtn = adminMode && p._manual
+    ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
+    : '';
+  const adminBtns = adminMode ? `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${editBtn}${hideBtn}${delBtn}</div>` : '';
   const htmlText = escHtml(text).replace(/\\n|\n/g, '<br>');
   return `<td class="action-cell left" ${rsAttr}>${adminBtns}${htmlText}</td>`;
 }
@@ -662,7 +853,7 @@ function d7Rows(promoList, cls = '') {
         <td>${fmt(b[C.D7H10_O])}</td>
         <td>${fmt(b[C.D7H5_SS])}</td>
         <td>${fmt(b[C.D7H10_SS])}</td>
-        ${actionCell(p.assetCode, 2)}
+        ${actionCell(p, 2)}
       </tr>
       <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
@@ -744,7 +935,7 @@ function d3Rows(promoList, cls = '') {
         <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
         <td>${fmt(b[C.D3H5])}</td>
-        ${actionCell(p.assetCode, 2)}
+        ${actionCell(p, 2)}
       </tr>
       <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
@@ -798,10 +989,14 @@ function renderD3(promos) {
 function d0Row(p, hidden = false) {
   const d = p.data, b = p.bench || [];
   const isHid = getHidden().includes(p.assetCode);
+  const delBtn = adminMode && p._manual
+    ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
+    : '';
   const adminCtrl = adminMode
     ? `<div style="display:flex;gap:4px;margin-bottom:3px">
         <button class="btn-sm edit-btn" onclick="editAction('${esc(p.assetCode)}')">Edit</button>
         <button class="btn-sm ${isHid ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(p.assetCode)}')">${isHid ? 'Show' : 'Hide'}</button>
+        ${delBtn}
        </div>`
     : '';
   const cls = hidden ? 'hidden-data' : 'data-row';
@@ -888,15 +1083,22 @@ function renderQueue() {
 
 function render() {
   const content = document.getElementById('report-content');
-  if (!promoData.d7.length && !promoData.d3.length && !promoData.d0.length) return;
+  const mp = getManualPromos();
+  const hasData = promoData.d7.length || promoData.d3.length || promoData.d0.length
+                || mp.d7.length || mp.d3.length || mp.d0.length;
+  if (!hasData) return;
+
+  const addBtn = bucket => adminMode
+    ? ` <button class="btn-sm edit-btn" style="vertical-align:middle;margin-left:8px" onclick="openAddPromoModal('${bucket}')">+ Add Promo</button>`
+    : '';
 
   content.innerHTML = `
-    <div class="section-title">D7 Mature Promos</div>
-    ${renderD7(promoData.d7)}
-    <div class="section-title">D3 Mature Promos</div>
-    ${renderD3(promoData.d3)}
-    <div class="section-title">D0 Promos</div>
-    ${renderD0(promoData.d0)}
+    <div class="section-title">D7 Mature Promos${addBtn('d7')}</div>
+    ${renderD7([...promoData.d7, ...mp.d7.map(manualToPromo)])}
+    <div class="section-title">D3 Mature Promos${addBtn('d3')}</div>
+    ${renderD3([...promoData.d3, ...mp.d3.map(manualToPromo)])}
+    <div class="section-title">D0 Promos${addBtn('d0')}</div>
+    ${renderD0([...promoData.d0, ...mp.d0.map(manualToPromo)])}
     ${renderNewAds()}
     ${renderQueue()}
   `;
@@ -957,25 +1159,25 @@ function toggleColMap() {
 }
 
 // ── DEFAULT ACTIONS ───────────────────────────────────────────────────────────
-// Pre-seeded from the 16 April reference report; editable via admin panel.
+// Updated 22 April 2026 — source of truth; always overwrites stored values.
 const DEFAULT_ACTIONS = {
-  'GU7852':   'Passed to Scaling for ROAS',
   'GU7851':   'Use as merge with Dragon Battle as mentioned by Shashank',
-  'GU8131':   '* Running until $10k spends\n* To be merged with Dragon Battle as mentioned by Shashank',
-  'GU5387':   'Planned for pickup in Week 1 of May, after 50 hours of content has gone live, ensuring readiness to scale.',
   'GU7859':   '* Use as Q1 merge on UK base\n* FYI: Scaling TSS UK Base',
-  'GU8120':   'Early results are positive - Keep spending to 200 installs for next update on retention',
-  'GU8143':   'Early results are positive - Keep spending to 200 installs for next update on retention',
+  'GU8131':   '* To be merged with Dragon Battle as mentioned by Shashank\n* Paused and started Spider Savior',
   'GU8142':   'Early results are positive - Keep spending to 200 installs for next update on retention',
   'APR26465': 'Activation has improved, waiting for cohort to mature for the downstream bottom funnel metrics',
-  'GU8200':   'Published to CPS on April 16',
+  'GU8120':   'Meeting Benchmarks - Scaled to 1.5K DRR on April 22',
+  'GU8200':   'To observe till 200 installs across both ads and evaluate on activation',
+  'GU8143':   'Early results are positive - Keep spending to 500 installs for next update on retention',
+  'GU8199':   'To observe till 200 installs across both ads and evaluate on activation',
 };
 
 function seedDefaultActions() {
   const actions = getActions();
+  // Always write defaults so updates here propagate on next page load
   let changed = false;
   for (const [code, text] of Object.entries(DEFAULT_ACTIONS)) {
-    if (!(code in actions)) { actions[code] = text; changed = true; }
+    if (actions[code] !== text) { actions[code] = text; changed = true; }
   }
   if (changed) setActions(actions);
 }
@@ -983,12 +1185,54 @@ function seedDefaultActions() {
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (function init() {
   seedDefaultActions();
-  // Set today's date
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric'
   });
   loadData();
 })();
 </script>
+
+<!-- Add Promo Modal -->
+<div id="promo-modal" style="display:none">
+  <div class="modal-backdrop" onclick="closePromoModal()"></div>
+  <div class="modal-card">
+    <div class="modal-header">
+      <span id="modal-title">Add Promo</span>
+      <button onclick="closePromoModal()" title="Close">&times;</button>
+    </div>
+    <form id="promo-form" onsubmit="saveManualPromo(event)">
+      <div class="form-section-label">Basics</div>
+      <div class="form-row"><label>Angle</label><input type="text" id="pf-angle" required placeholder="e.g. FLBM Evaluator"/></div>
+      <div class="form-row"><label>Asset Code</label><input type="text" id="pf-code" required placeholder="e.g. GU8250"/></div>
+      <div class="form-row"><label>Start Date (M/D/YYYY)</label><input type="text" id="pf-date" placeholder="4/17/2026"/></div>
+      <div class="form-row"><label>CPI on CPS ($)</label><input type="number" step="0.1" min="0" id="pf-cpi" placeholder="22.0"/></div>
+      <div class="form-row"><label>Installs</label><input type="number" min="0" id="pf-installs" placeholder="100"/></div>
+      <div class="form-row"><label>Amount Spent ($)</label><input type="number" step="0.1" min="0" id="pf-spent" placeholder="2000"/></div>
+
+      <div id="pf-sec-d0" class="form-section-label">D0 Metrics</div>
+      <div class="form-row" id="pf-row-actd0"><label>Activation D0 (%)</label><input type="number" step="0.1" id="pf-actd0" placeholder="18.5"/></div>
+
+      <div id="pf-sec-d3d7" class="form-section-label">D3 Metrics</div>
+      <div class="form-row" id="pf-row-d3mat"><label>D3 Mature installs</label><input type="number" min="0" id="pf-d3mat" placeholder="250"/></div>
+      <div class="form-row" id="pf-row-actd3"><label>Activation D3 (%)</label><input type="number" step="0.1" id="pf-actd3" placeholder="24.5"/></div>
+      <div class="form-row" id="pf-row-d3h5ss"><label>D3H5 SS (%)</label><input type="number" step="0.1" id="pf-d3h5ss" placeholder="9.11"/></div>
+
+      <div id="pf-sec-d7" class="form-section-label">D7 Metrics</div>
+      <div class="form-row" id="pf-row-d7mat"><label>D7 Mature installs</label><input type="number" min="0" id="pf-d7mat" placeholder="200"/></div>
+      <div class="form-row" id="pf-row-recd7"><label>Recovery D7 (%)</label><input type="number" step="0.1" id="pf-recd7" placeholder="2.8"/></div>
+      <div class="form-row" id="pf-row-d3h3"><label>D3H3 (%)</label><input type="number" step="0.1" id="pf-d3h3" placeholder="15.55"/></div>
+      <div class="form-row" id="pf-row-d3h5"><label>D3H5 Overall (%)</label><input type="number" step="0.1" id="pf-d3h5" placeholder="10.03"/></div>
+      <div class="form-row" id="pf-row-d7h5o"><label>D7H5 Overall (%)</label><input type="number" step="0.1" id="pf-d7h5o" placeholder="17.23"/></div>
+      <div class="form-row" id="pf-row-d7h10o"><label>D7H10 Overall (%)</label><input type="number" step="0.1" id="pf-d7h10o" placeholder="9.49"/></div>
+      <div class="form-row" id="pf-row-d7h5ss"><label>D7H5 Same Show (%)</label><input type="number" step="0.1" id="pf-d7h5ss" placeholder="14.01"/></div>
+      <div class="form-row" id="pf-row-d7h10ss"><label>D7H10 Same Show (%)</label><input type="number" step="0.1" id="pf-d7h10ss" placeholder="4.38"/></div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button type="button" class="btn" onclick="closePromoModal()">Cancel</button>
+        <button type="submit" class="btn active">Add Promo</button>
+      </div>
+    </form>
+  </div>
+</div>
 </body>
 </html>
