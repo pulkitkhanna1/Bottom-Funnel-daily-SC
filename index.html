@@ -487,8 +487,10 @@ function saveStore(s) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch {}
   // Push to Supabase asynchronously (fire-and-forget)
   if (_sbReady && _sb) {
+    // Only sync shared fields to Supabase (newAds and queue are local-only)
+    const shared = { actions: s.actions, hidden: s.hidden, manualPromos: s.manualPromos };
     _sb.from('admin_store')
-      .update({ data: s, updated_at: new Date().toISOString() })
+      .update({ data: shared, updated_at: new Date().toISOString() })
       .eq('id', 1)
       .then(({ error }) => {
         if (error) { console.warn('Supabase write failed:', error.message); setSyncStatus('error'); }
@@ -1252,7 +1254,16 @@ function seedDefaultActions() {
       _sb = supabase.createClient(cfg.url, cfg.key);
       const { data, error } = await _sb.from('admin_store').select('data').eq('id', 1).single();
       if (error) throw error;
-      _cache = data.data || {};
+      // Merge: shared fields from Supabase, local-only fields from localStorage
+      const localStore = _cache;
+      const sbData = data.data || {};
+      _cache = {
+        actions:      sbData.actions      || {},
+        hidden:       sbData.hidden       || [],
+        manualPromos: sbData.manualPromos || { d7: [], d3: [], d0: [] },
+        newAds:       localStore.newAds   || [],
+        queue:        localStore.queue    || [],
+      };
       try { localStorage.setItem(STORE_KEY, JSON.stringify(_cache)); } catch {}
       _sbReady = true;
       setSyncStatus('live');
@@ -1261,7 +1272,15 @@ function seedDefaultActions() {
       _sb.channel('admin-sync')
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'admin_store' },
           payload => {
-            _cache = payload.new.data || {};
+            // Merge: shared fields from Supabase update, preserve local-only fields
+            const sbData = payload.new.data || {};
+            _cache = {
+              actions:      sbData.actions      || {},
+              hidden:       sbData.hidden       || [],
+              manualPromos: sbData.manualPromos || { d7: [], d3: [], d0: [] },
+              newAds:       _cache.newAds       || [],
+              queue:        _cache.queue        || [],
+            };
             try { localStorage.setItem(STORE_KEY, JSON.stringify(_cache)); } catch {}
             render();
           })
