@@ -55,6 +55,8 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .date { color: var(--muted); font-size: 13px; }
@@ -72,6 +74,10 @@
     }
     .btn:hover { background: #f0f0f0; }
     .btn.active { background: var(--head-yellow); }
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
     .btn-sm {
       padding: 2px 8px;
       font-size: 11px;
@@ -111,6 +117,35 @@
       border: 2px solid var(--line);
       background: #fff;
       overflow-x: auto;
+    }
+
+    .extended-wrap table {
+      min-width: 1600px;
+    }
+
+    .extended-wrap th,
+    .extended-wrap td {
+      min-width: 95px;
+      max-width: 240px;
+      word-break: break-word;
+    }
+
+    .extended-wrap th:first-child,
+    .extended-wrap td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      min-width: 58px;
+    }
+
+    .extended-wrap th:first-child {
+      z-index: 3;
+    }
+
+    .extended-wrap td:first-child {
+      background: var(--cell-alt);
+      font-weight: 700;
+      color: var(--muted);
     }
 
     table {
@@ -356,6 +391,7 @@
     <div class="top-right">
       <span class="date" id="today-date"></span>
       <button class="btn" id="refresh-btn" onclick="loadData()">Refresh</button>
+      <button class="btn" id="extended-metrics-btn" onclick="toggleExtendedMetrics()">show extended metrics</button>
       <button class="btn" id="admin-btn" onclick="toggleAdmin()">Admin</button>
     </div>
   </div>
@@ -466,6 +502,7 @@ function buildC(cols) {
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let adminMode  = false;
 let promoData  = { d7: [], d3: [], d0: [] };
+let extendedMetricsVisible = false;
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
 let _sb      = null;   // Supabase client (null = not configured)
@@ -1157,22 +1194,91 @@ function render() {
   const mp = getManualPromos();
   const hasData = promoData.d7.length || promoData.d3.length || promoData.d0.length
                 || mp.d7.length || mp.d3.length || mp.d0.length;
-  if (!hasData) return;
+  if (!hasData && !extendedMetricsVisible) return;
 
   const addBtn = bucket => adminMode
     ? ` <button class="btn-sm edit-btn" style="vertical-align:middle;margin-left:8px" onclick="openAddPromoModal('${bucket}')">+ Add Promo</button>`
     : '';
 
   content.innerHTML = `
-    <div class="section-title">D7 Mature Promos${addBtn('d7')}</div>
-    ${renderD7([...promoData.d7, ...mp.d7.map(manualToPromo)])}
-    <div class="section-title">D3 Mature Promos${addBtn('d3')}</div>
-    ${renderD3([...promoData.d3, ...mp.d3.map(manualToPromo)])}
-    <div class="section-title">D0 Promos${addBtn('d0')}</div>
-    ${renderD0([...promoData.d0, ...mp.d0.map(manualToPromo)])}
+    ${hasData ? `
+      <div class="section-title">D7 Mature Promos${addBtn('d7')}</div>
+      ${renderD7([...promoData.d7, ...mp.d7.map(manualToPromo)])}
+      <div class="section-title">D3 Mature Promos${addBtn('d3')}</div>
+      ${renderD3([...promoData.d3, ...mp.d3.map(manualToPromo)])}
+      <div class="section-title">D0 Promos${addBtn('d0')}</div>
+      ${renderD0([...promoData.d0, ...mp.d0.map(manualToPromo)])}
+    ` : ''}
+    ${renderExtendedMetrics()}
     ${renderNewAds()}
     ${renderQueue()}
   `;
+}
+
+function toggleExtendedMetrics() {
+  extendedMetricsVisible = !extendedMetricsVisible;
+  updateExtendedMetricsButton();
+  render();
+}
+
+function updateExtendedMetricsButton() {
+  const btn = document.getElementById('extended-metrics-btn');
+  if (!btn) return;
+  btn.textContent = extendedMetricsVisible ? 'hide extended metrics' : 'show extended metrics';
+  btn.classList.toggle('active', extendedMetricsVisible);
+}
+
+function renderExtendedMetrics() {
+  if (!extendedMetricsVisible) return '';
+  if (!_debugRows.length) {
+    return '<p style="color:var(--muted);font-size:13px;padding:8px 0">Load the sheet to show extended metrics.</p>';
+  }
+
+  const colIndexes = getNonEmptyColumnIndexes(_debugRows);
+  const header = _debugRows[0] || [];
+  const rows = _debugRows.slice(1).filter(row => colIndexes.some(i => fmt(row[i]) !== '—'));
+  const headCells = colIndexes
+    .map(i => `<th>${escHtml(header[i] || columnLabel(i))}</th>`)
+    .join('');
+  const bodyRows = rows.map((row, rowIdx) => `
+    <tr>
+      <td>${rowIdx + 1}</td>
+      ${colIndexes.map(i => `<td>${escHtml(fmt(row[i]))}</td>`).join('')}
+    </tr>`).join('');
+
+  return `
+    <div class="section-title">Extended Metrics</div>
+    <div class="table-wrap extended-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Row</th>
+            ${headCells}
+          </tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>`;
+}
+
+function getNonEmptyColumnIndexes(rows) {
+  const maxLen = rows.reduce((max, row) => Math.max(max, row.length), 0);
+  const indexes = [];
+  for (let i = 0; i < maxLen; i++) {
+    if (rows.some(row => row[i] && String(row[i]).trim() && row[i] !== '#N/A')) indexes.push(i);
+  }
+  return indexes;
+}
+
+function columnLabel(index) {
+  let n = index + 1;
+  let label = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    label = String.fromCharCode(65 + rem) + label;
+    n = Math.floor((n - 1) / 26);
+  }
+  return label;
 }
 
 // ── DATA LOADING ──────────────────────────────────────────────────────────────
@@ -1185,6 +1291,7 @@ function setStatus(msg, isErr = false) {
 async function loadData() {
   setStatus('<span class="spinner"></span> Fetching data from Google Sheets…');
   document.getElementById('refresh-btn').disabled = true;
+  document.getElementById('extended-metrics-btn').disabled = true;
   try {
     const rows = await fetchGvizJSONP();
     if (rows.length < 2) throw new Error('No data rows returned.');
@@ -1192,11 +1299,13 @@ async function loadData() {
     promoData = categorize(promos);
     const total = promoData.d7.length + promoData.d3.length + promoData.d0.length;
     setStatus(`Loaded ${total} promos — last updated ${new Date().toLocaleTimeString()}`);
+    updateExtendedMetricsButton();
     render();
   } catch (e) {
     setStatus(`Failed to load data: ${e.message}. Make sure the Google Sheet is set to "Anyone with the link can view".`, true);
   } finally {
     document.getElementById('refresh-btn').disabled = false;
+    document.getElementById('extended-metrics-btn').disabled = false;
   }
 }
 
