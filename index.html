@@ -548,12 +548,24 @@ function saveStore(s) {
   }
 }
 function getActions()  { return getStore().actions  || {}; }
-function getHidden()   { return getStore().hidden   || []; }
+function getHidden(scope = 'default') {
+  if (scope === 'default') return getStore().hidden || [];
+  return (getStore().hiddenBySection || {})[scope] || [];
+}
 function getNewAds()   { return getStore().newAds   || []; }
 function getQueue()    { return getStore().queue     || []; }
 
 function setActions(v)      { const s = getStore(); s.actions      = v; saveStore(s); }
-function setHidden(v)       { const s = getStore(); s.hidden       = v; saveStore(s); }
+function setHidden(v, scope = 'default') {
+  const s = getStore();
+  if (scope === 'default') {
+    s.hidden = v;
+  } else {
+    s.hiddenBySection = s.hiddenBySection || {};
+    s.hiddenBySection[scope] = v;
+  }
+  saveStore(s);
+}
 function setNewAds(v)       { const s = getStore(); s.newAds       = v; saveStore(s); }
 function setQueue(v)        { const s = getStore(); s.queue        = v; saveStore(s); }
 function getManualPromos()  { const mp = getStore().manualPromos || {}; return { d7: mp.d7||[], d3: mp.d3||[], d0: mp.d0||[] }; }
@@ -846,13 +858,13 @@ function saveActionInline(assetCode, value) {
     setActions(actions);
   }, 600);
 }
-function toggleHide(assetCode) {
+function toggleHide(assetCode, scope = 'default') {
   if (!requireAdmin()) return;
-  const hidden = getHidden();
+  const hidden = getHidden(scope);
   const idx = hidden.indexOf(assetCode);
   if (idx === -1) hidden.push(assetCode);
   else hidden.splice(idx, 1);
-  setHidden(hidden);
+  setHidden(hidden, scope);
   render();
 }
 function addNewAd() {
@@ -926,12 +938,13 @@ function updateAdminUI() {
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
-function actionCell(p, rowspan) {
+function actionCell(p, rowspan, hideScope = 'default') {
   const assetCode = typeof p === 'string' ? p : p.assetCode;
   const text = getAction(assetCode);
   const rsAttr = rowspan > 1 ? `rowspan="${rowspan}"` : '';
+  const isHidden = getHidden(hideScope).includes(assetCode);
   const hideBtn = adminMode
-    ? `<button class="btn-sm ${getHidden().includes(assetCode) ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(assetCode)}')">${getHidden().includes(assetCode) ? 'Show' : 'Hide'}</button>`
+    ? `<button class="btn-sm ${isHidden ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(assetCode)}','${hideScope}')">${isHidden ? 'Show' : 'Hide'}</button>`
     : '';
   const delBtn = adminMode && p._manual
     ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
@@ -949,7 +962,7 @@ function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function d7Rows(promoList, cls = '') {
+function d7Rows(promoList, cls = '', hideScope = 'default') {
   let out = '';
   const bench = cls ? 'hidden-bench' : 'bench-row';
   const data  = cls ? 'hidden-data'  : 'data-row';
@@ -967,7 +980,7 @@ function d7Rows(promoList, cls = '') {
         <td>${fmt(b[C.D7H10_O])}</td>
         <td>${fmt(b[C.D7H5_SS])}</td>
         <td>${fmt(b[C.D7H10_SS])}</td>
-        ${actionCell(p, 2)}
+        ${actionCell(p, 2, hideScope)}
       </tr>
       <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
@@ -991,17 +1004,17 @@ function d7Rows(promoList, cls = '') {
   return out;
 }
 
-function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Start Date') {
-  const hidden = getHidden();
+function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Start Date', hideScope = 'default') {
+  const hidden = getHidden(hideScope);
   const visible = promos.filter(p => !hidden.includes(p.assetCode));
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return `<p style="color:var(--muted);font-size:13px;padding:8px 0">${emptyLabel}</p>`;
 
   const colCount = 18;
-  let rows = d7Rows(visible);
+  let rows = d7Rows(visible, '', hideScope);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
-    rows += d7Rows(hiddenP, 'hidden');
+    rows += d7Rows(hiddenP, 'hidden', hideScope);
   }
 
   return `
@@ -1216,9 +1229,9 @@ function render() {
   content.innerHTML = `
     ${hasData ? `
       <div class="section-title">Cracked Assets</div>
-      ${renderD7(crackedPromos, 'No Cracked Assets.', 'Upload Date')}
+      ${renderD7(crackedPromos, 'No Cracked Assets.', 'Upload Date', 'cracked')}
       <div class="section-title">D7 Mature Promos${addBtn('d7')}</div>
-      ${renderD7([...promoData.d7, ...mp.d7.map(manualToPromo)])}
+      ${renderD7([...promoData.d7, ...mp.d7.map(manualToPromo)], 'No D7 Mature promos.', 'Start Date', 'd7')}
       <div class="section-title">D3 Mature Promos${addBtn('d3')}</div>
       ${renderD3([...promoData.d3, ...mp.d3.map(manualToPromo)])}
       <div class="section-title">D0 Promos${addBtn('d0')}</div>
