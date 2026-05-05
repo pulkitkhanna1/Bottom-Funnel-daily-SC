@@ -503,7 +503,7 @@ function buildC(cols) {
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let adminMode  = false;
-let promoData  = { cracked: [], d7: [], d3: [], d0: [] };
+let promoData  = { d7: [], d3: [], d0: [] };
 let extendedMetricsVisible = false;
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
@@ -554,6 +554,7 @@ function getHidden(scope = 'default') {
 }
 function getNewAds()   { return getStore().newAds   || []; }
 function getQueue()    { return getStore().queue     || []; }
+function getCrackedAssets() { return getStore().crackedAssets || []; }
 
 function setActions(v)      { const s = getStore(); s.actions      = v; saveStore(s); }
 function setHidden(v, scope = 'default') {
@@ -568,6 +569,7 @@ function setHidden(v, scope = 'default') {
 }
 function setNewAds(v)       { const s = getStore(); s.newAds       = v; saveStore(s); }
 function setQueue(v)        { const s = getStore(); s.queue        = v; saveStore(s); }
+function setCrackedAssets(v) { const s = getStore(); s.crackedAssets = v; saveStore(s); }
 function getManualPromos()  { const mp = getStore().manualPromos || {}; return { d7: mp.d7||[], d3: mp.d3||[], d0: mp.d0||[] }; }
 function setManualPromos(v) { const s = getStore(); s.manualPromos = v; saveStore(s); }
 
@@ -785,23 +787,17 @@ function daysSinceStart(dateStr) {
 }
 
 function categorize(promos) {
-  const cracked = [], d7 = [], d3 = [], d0 = [];
+  const d7 = [], d3 = [], d0 = [];
   for (const p of promos) {
     const days = daysSinceStart(p.data[C.DATE]);
     const d3m  = parseVal(p.data[C.D3_MAT]);
-    if (days !== null && days > 7) cracked.push(p);
     if (days !== null && days > 12) d7.push(p);
     else if (d3m !== null && d3m >= 30) d3.push(p);
     else d0.push(p);
   }
   const byAngle = (a, b) => a.angle.localeCompare(b.angle);
-  cracked.sort(byAngle); d7.sort(byAngle); d3.sort(byAngle); d0.sort(byAngle);
-  return { cracked, d7, d3, d0 };
-}
-
-function isOlderThanDays(promo, dayCount) {
-  const days = daysSinceStart(promo.data[C.DATE]);
-  return days !== null && days > dayCount;
+  d7.sort(byAngle); d3.sort(byAngle); d0.sort(byAngle);
+  return { d7, d3, d0 };
 }
 
 // ── VALUE HELPERS ─────────────────────────────────────────────────────────────
@@ -865,6 +861,20 @@ function toggleHide(assetCode, scope = 'default') {
   if (idx === -1) hidden.push(assetCode);
   else hidden.splice(idx, 1);
   setHidden(hidden, scope);
+  render();
+}
+function moveToCracked(assetCode) {
+  if (!requireAdmin()) return;
+  const cracked = getCrackedAssets();
+  if (!cracked.includes(assetCode)) {
+    cracked.push(assetCode);
+    setCrackedAssets(cracked);
+  }
+  render();
+}
+function moveToD7(assetCode) {
+  if (!requireAdmin()) return;
+  setCrackedAssets(getCrackedAssets().filter(code => code !== assetCode));
   render();
 }
 function addNewAd() {
@@ -938,7 +948,7 @@ function updateAdminUI() {
 }
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
-function actionCell(p, rowspan, hideScope = 'default') {
+function actionCell(p, rowspan, hideScope = 'default', moveTarget = '') {
   const assetCode = typeof p === 'string' ? p : p.assetCode;
   const text = getAction(assetCode);
   const rsAttr = rowspan > 1 ? `rowspan="${rowspan}"` : '';
@@ -946,11 +956,16 @@ function actionCell(p, rowspan, hideScope = 'default') {
   const hideBtn = adminMode
     ? `<button class="btn-sm ${isHidden ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(assetCode)}','${hideScope}')">${isHidden ? 'Show' : 'Hide'}</button>`
     : '';
+  const moveBtn = adminMode && moveTarget === 'cracked'
+    ? `<button class="btn-sm edit-btn" onclick="moveToCracked('${esc(assetCode)}')">Move to Cracked</button>`
+    : adminMode && moveTarget === 'd7'
+      ? `<button class="btn-sm edit-btn" onclick="moveToD7('${esc(assetCode)}')">Put back to D7</button>`
+      : '';
   const delBtn = adminMode && p._manual
     ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
     : '';
   if (adminMode) {
-    const adminBtns = `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${hideBtn}${delBtn}</div>`;
+    const adminBtns = `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${hideBtn}${moveBtn}${delBtn}</div>`;
     return `<td class="action-cell left" ${rsAttr}>${adminBtns}<textarea class="action-textarea" oninput="saveActionInline('${esc(assetCode)}',this.value)">${escHtml(text)}</textarea></td>`;
   }
   const htmlText = escHtml(text).replace(/\\n|\n/g, '<br>');
@@ -962,7 +977,7 @@ function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function d7Rows(promoList, cls = '', hideScope = 'default') {
+function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
   let out = '';
   const bench = cls ? 'hidden-bench' : 'bench-row';
   const data  = cls ? 'hidden-data'  : 'data-row';
@@ -980,7 +995,7 @@ function d7Rows(promoList, cls = '', hideScope = 'default') {
         <td>${fmt(b[C.D7H10_O])}</td>
         <td>${fmt(b[C.D7H5_SS])}</td>
         <td>${fmt(b[C.D7H10_SS])}</td>
-        ${actionCell(p, 2, hideScope)}
+        ${actionCell(p, 2, hideScope, moveTarget)}
       </tr>
       <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
@@ -1004,17 +1019,17 @@ function d7Rows(promoList, cls = '', hideScope = 'default') {
   return out;
 }
 
-function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Start Date', hideScope = 'default') {
+function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Start Date', hideScope = 'default', moveTarget = '') {
   const hidden = getHidden(hideScope);
   const visible = promos.filter(p => !hidden.includes(p.assetCode));
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return `<p style="color:var(--muted);font-size:13px;padding:8px 0">${emptyLabel}</p>`;
 
   const colCount = 18;
-  let rows = d7Rows(visible, '', hideScope);
+  let rows = d7Rows(visible, '', hideScope, moveTarget);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
-    rows += d7Rows(hiddenP, 'hidden', hideScope);
+    rows += d7Rows(hiddenP, 'hidden', hideScope, moveTarget);
   }
 
   return `
@@ -1213,14 +1228,13 @@ function renderQueue() {
 function render() {
   const content = document.getElementById('report-content');
   const mp = getManualPromos();
-  const hasData = (promoData.cracked || []).length || promoData.d7.length || promoData.d3.length || promoData.d0.length
+  const crackedAssetCodes = getCrackedAssets();
+  const d7Promos = [...promoData.d7, ...mp.d7.map(manualToPromo)];
+  const crackedPromos = d7Promos.filter(p => crackedAssetCodes.includes(p.assetCode));
+  const activeD7Promos = d7Promos.filter(p => !crackedAssetCodes.includes(p.assetCode));
+  const hasData = crackedPromos.length || activeD7Promos.length || promoData.d3.length || promoData.d0.length
                 || mp.d7.length || mp.d3.length || mp.d0.length;
   if (!hasData && !extendedMetricsVisible) return;
-  const manualPromos = [...mp.d7, ...mp.d3, ...mp.d0].map(manualToPromo);
-  const crackedPromos = [
-    ...(promoData.cracked || []),
-    ...manualPromos.filter(p => isOlderThanDays(p, 7)),
-  ];
 
   const addBtn = bucket => adminMode
     ? ` <button class="btn-sm edit-btn" style="vertical-align:middle;margin-left:8px" onclick="openAddPromoModal('${bucket}')">+ Add Promo</button>`
@@ -1229,9 +1243,9 @@ function render() {
   content.innerHTML = `
     ${hasData ? `
       <div class="section-title">Cracked Assets</div>
-      ${renderD7(crackedPromos, 'No Cracked Assets.', 'Upload Date', 'cracked')}
+      ${renderD7(crackedPromos, 'No Cracked Assets.', 'Upload Date', 'cracked', 'd7')}
       <div class="section-title">D7 Mature Promos${addBtn('d7')}</div>
-      ${renderD7([...promoData.d7, ...mp.d7.map(manualToPromo)], 'No D7 Mature promos.', 'Start Date', 'd7')}
+      ${renderD7(activeD7Promos, 'No D7 Mature promos.', 'Start Date', 'd7', 'cracked')}
       <div class="section-title">D3 Mature Promos${addBtn('d3')}</div>
       ${renderD3([...promoData.d3, ...mp.d3.map(manualToPromo)])}
       <div class="section-title">D0 Promos${addBtn('d0')}</div>
