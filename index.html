@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     :root {
       --bg: #f2f4f7;
@@ -391,6 +392,7 @@
     <div class="top-right">
       <span class="date" id="today-date"></span>
       <button class="btn" id="refresh-btn" onclick="loadData()">Refresh</button>
+      <button class="btn" id="download-png-btn" onclick="downloadPNG()">Download PNG</button>
       <button class="btn" id="extended-metrics-btn" onclick="toggleExtendedMetrics()">show extended metrics</button>
       <button class="btn" id="admin-btn" onclick="toggleAdmin()">Admin</button>
     </div>
@@ -456,7 +458,7 @@ const LETTER_TO_KEY = {
 const LABEL_RULES = [
   { key: 'ANGLE',    test: s => /\bangle\b/i.test(s) },
   { key: 'METRIC',   test: s => /metrics|asset.?code/i.test(s) },
-  { key: 'DATE',     test: s => /start.?date/i.test(s) },
+  { key: 'DATE',     test: s => /start.?date|upload.?date/i.test(s) },
   { key: 'CPI',      test: s => /cpi.on.cps/i.test(s) },
   { key: 'INSTALLS', test: s => /^installs$/i.test(s.trim()) },
   { key: 'SPENT',    test: s => /amount.?spent/i.test(s) },
@@ -501,7 +503,7 @@ function buildC(cols) {
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let adminMode  = false;
-let promoData  = { d7: [], d3: [], d0: [] };
+let promoData  = { cracked: [], d7: [], d3: [], d0: [] };
 let extendedMetricsVisible = false;
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
@@ -771,17 +773,23 @@ function daysSinceStart(dateStr) {
 }
 
 function categorize(promos) {
-  const d7 = [], d3 = [], d0 = [];
+  const cracked = [], d7 = [], d3 = [], d0 = [];
   for (const p of promos) {
     const days = daysSinceStart(p.data[C.DATE]);
     const d3m  = parseVal(p.data[C.D3_MAT]);
+    if (days !== null && days > 7) cracked.push(p);
     if (days !== null && days > 12) d7.push(p);
     else if (d3m !== null && d3m >= 30) d3.push(p);
     else d0.push(p);
   }
   const byAngle = (a, b) => a.angle.localeCompare(b.angle);
-  d7.sort(byAngle); d3.sort(byAngle); d0.sort(byAngle);
-  return { d7, d3, d0 };
+  cracked.sort(byAngle); d7.sort(byAngle); d3.sort(byAngle); d0.sort(byAngle);
+  return { cracked, d7, d3, d0 };
+}
+
+function isOlderThanDays(promo, dayCount) {
+  const days = daysSinceStart(promo.data[C.DATE]);
+  return days !== null && days > dayCount;
 }
 
 // ── VALUE HELPERS ─────────────────────────────────────────────────────────────
@@ -983,11 +991,11 @@ function d7Rows(promoList, cls = '') {
   return out;
 }
 
-function renderD7(promos) {
+function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Start Date') {
   const hidden = getHidden();
   const visible = promos.filter(p => !hidden.includes(p.assetCode));
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
-  if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D7 Mature promos.</p>';
+  if (!visible.length && !hiddenP.length) return `<p style="color:var(--muted);font-size:13px;padding:8px 0">${emptyLabel}</p>`;
 
   const colCount = 18;
   let rows = d7Rows(visible);
@@ -1003,7 +1011,7 @@ function renderD7(promos) {
           <tr>
             <th rowspan="2">Angle</th>
             <th rowspan="2">Metrics / Asset Code</th>
-            <th rowspan="2">Start Date</th>
+            <th rowspan="2">${dateLabel}</th>
             <th rowspan="2">CPI on CPS</th>
             <th rowspan="2">Installs</th>
             <th rowspan="2">D3 Mature installs</th>
@@ -1192,9 +1200,14 @@ function renderQueue() {
 function render() {
   const content = document.getElementById('report-content');
   const mp = getManualPromos();
-  const hasData = promoData.d7.length || promoData.d3.length || promoData.d0.length
+  const hasData = (promoData.cracked || []).length || promoData.d7.length || promoData.d3.length || promoData.d0.length
                 || mp.d7.length || mp.d3.length || mp.d0.length;
   if (!hasData && !extendedMetricsVisible) return;
+  const manualPromos = [...mp.d7, ...mp.d3, ...mp.d0].map(manualToPromo);
+  const crackedPromos = [
+    ...(promoData.cracked || []),
+    ...manualPromos.filter(p => isOlderThanDays(p, 7)),
+  ];
 
   const addBtn = bucket => adminMode
     ? ` <button class="btn-sm edit-btn" style="vertical-align:middle;margin-left:8px" onclick="openAddPromoModal('${bucket}')">+ Add Promo</button>`
@@ -1202,6 +1215,8 @@ function render() {
 
   content.innerHTML = `
     ${hasData ? `
+      <div class="section-title">Cracked Assets</div>
+      ${renderD7(crackedPromos, 'No Cracked Assets.', 'Upload Date')}
       <div class="section-title">D7 Mature Promos${addBtn('d7')}</div>
       ${renderD7([...promoData.d7, ...mp.d7.map(manualToPromo)])}
       <div class="section-title">D3 Mature Promos${addBtn('d3')}</div>
@@ -1288,9 +1303,44 @@ function setStatus(msg, isErr = false) {
   el.innerHTML = msg;
 }
 
+async function downloadPNG() {
+  const btn = document.getElementById('download-png-btn');
+  const target = document.querySelector('.page');
+  if (!target) return;
+  if (typeof html2canvas === 'undefined') {
+    setStatus('PNG download is still loading. Try again in a moment.', true);
+    return;
+  }
+
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Downloading...';
+  try {
+    const canvas = await html2canvas(target, {
+      backgroundColor: '#f2f4f7',
+      scale: Math.min(2, window.devicePixelRatio || 1),
+      useCORS: true,
+      windowWidth: target.scrollWidth,
+      windowHeight: target.scrollHeight,
+    });
+    const link = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    link.download = `bottom-funnel-update-${date}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    setStatus(`Downloaded PNG — ${new Date().toLocaleTimeString()}`);
+  } catch (e) {
+    setStatus(`Failed to download PNG: ${e.message}`, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
 async function loadData() {
   setStatus('<span class="spinner"></span> Fetching data from Google Sheets…');
   document.getElementById('refresh-btn').disabled = true;
+  document.getElementById('download-png-btn').disabled = true;
   document.getElementById('extended-metrics-btn').disabled = true;
   try {
     const rows = await fetchGvizJSONP();
@@ -1305,6 +1355,7 @@ async function loadData() {
     setStatus(`Failed to load data: ${e.message}. Make sure the Google Sheet is set to "Anyone with the link can view".`, true);
   } finally {
     document.getElementById('refresh-btn').disabled = false;
+    document.getElementById('download-png-btn').disabled = false;
     document.getElementById('extended-metrics-btn').disabled = false;
   }
 }
