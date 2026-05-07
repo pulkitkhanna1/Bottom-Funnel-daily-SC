@@ -439,18 +439,18 @@ const STORE_KEY = 'bfu_admin_v1';
 // Column indices — built dynamically from sheet header labels (see buildC below).
 // Fallback hardcoded values (by column letter) used if label matching fails.
 let C = {
-  ANGLE:    1,  METRIC:   2,  DATE:     3,  CPI:      4,
-  INSTALLS: 5,  SPENT:    6,  ACT_D0:   7,  ACT_D3:   8,
-  REC_D7:   13, D3H3:     39, D3H5:     40, D7H5_O:   41,
-  D7H10_O:  42, D7H5_SS:  45, D7H10_SS: 46, D3_MAT:   47, D7_MAT: 48,
+  ANGLE:    1,  METRIC:   2,  DATE:     3,  TESTING_CPI: 4,  CPI: 5,
+  INSTALLS: 6,  SPENT:    7,  ACT_D0:   8,  ACT_D3:      9,
+  REC_D7:   14, D3H3:     40, D3H5:     41, D7H5_O:     42,
+  D7H10_O:  43, D7H5_SS:  46, D7H10_SS: 47, D3_MAT:     48, D7_MAT: 49,
 };
 
 // Column-letter → semantic key (used as fallback when labels are empty)
 const LETTER_TO_KEY = {
-  B:'ANGLE', C:'METRIC', D:'DATE', E:'CPI', F:'INSTALLS', G:'SPENT',
-  H:'ACT_D0', I:'ACT_D3', N:'REC_D7',
-  AN:'D3H3', AO:'D3H5', AP:'D7H5_O', AQ:'D7H10_O',
-  AT:'D7H5_SS', AU:'D7H10_SS', AV:'D3_MAT', AW:'D7_MAT',
+  B:'ANGLE', C:'METRIC', D:'DATE', E:'TESTING_CPI', F:'CPI', G:'INSTALLS', H:'SPENT',
+  I:'ACT_D0', J:'ACT_D3', O:'REC_D7',
+  AO:'D3H3', AP:'D3H5', AQ:'D7H5_O', AR:'D7H10_O',
+  AU:'D7H5_SS', AV:'D7H10_SS', AW:'D3_MAT', AX:'D7_MAT',
 };
 
 // Label patterns — matched against GViz column labels (case-insensitive)
@@ -459,6 +459,7 @@ const LABEL_RULES = [
   { key: 'ANGLE',    test: s => /\bangle\b/i.test(s) },
   { key: 'METRIC',   test: s => /metrics|asset.?code/i.test(s) },
   { key: 'DATE',     test: s => /start.?date|upload.?date/i.test(s) },
+  { key: 'TESTING_CPI', test: s => /testing.?cpi/i.test(s) },
   { key: 'CPI',      test: s => /cpi.on.cps/i.test(s) },
   { key: 'INSTALLS', test: s => /^installs$/i.test(s.trim()) },
   { key: 'SPENT',    test: s => /amount.?spent/i.test(s) },
@@ -821,6 +822,11 @@ function fmt(s) {
   return s.trim();
 }
 
+function valueAt(row, key) {
+  const idx = C[key];
+  return idx == null ? '' : row[idx];
+}
+
 function cc(valS, benchS) {
   // color class: compare actual vs benchmark
   const a = parseVal(valS);
@@ -986,7 +992,7 @@ function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
     out += `
       <tr class="${bench}">
         <td rowspan="2" class="left">${escHtml(p.angle)}</td>
-        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
         <td>${fmt(b[C.REC_D7])}</td>
         <td>${fmt(b[C.D3H3])}</td>
@@ -1000,6 +1006,7 @@ function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
       <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
         <td>${fmt(d[C.DATE])}</td>
+        <td>${fmt(valueAt(d, 'TESTING_CPI'))}</td>
         <td>${fmt(d[C.CPI])}</td>
         <td>${fmt(d[C.INSTALLS])}</td>
         <td>${fmt(d[C.D3_MAT])}</td>
@@ -1025,7 +1032,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return `<p style="color:var(--muted);font-size:13px;padding:8px 0">${emptyLabel}</p>`;
 
-  const colCount = 18;
+  const colCount = 19;
   let rows = d7Rows(visible, '', hideScope, moveTarget);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -1040,6 +1047,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
             <th rowspan="2">Angle</th>
             <th rowspan="2">Metrics / Asset Code</th>
             <th rowspan="2">${dateLabel}</th>
+            <th rowspan="2">Testing CPI</th>
             <th rowspan="2">CPI on CPS</th>
             <th rowspan="2">Installs</th>
             <th rowspan="2">D3 Mature installs</th>
@@ -1074,7 +1082,7 @@ function d3Rows(promoList, cls = '') {
     out += `
       <tr class="${bench}">
         <td rowspan="2" class="left">${escHtml(p.angle)}</td>
-        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td>
+        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
         <td>${fmt(b[C.D3H5])}</td>
         ${actionCell(p, 2)}
@@ -1082,6 +1090,7 @@ function d3Rows(promoList, cls = '') {
       <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
         <td>${fmt(d[C.DATE])}</td>
+        <td>${fmt(valueAt(d, 'TESTING_CPI'))}</td>
         <td>${fmt(d[C.CPI])}</td>
         <td>${fmt(d[C.INSTALLS])}</td>
         <td>${fmt(d[C.D3_MAT])}</td>
@@ -1099,7 +1108,7 @@ function renderD3(promos) {
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D3 Mature promos.</p>';
 
-  const colCount = 10;
+  const colCount = 11;
   let rows = d3Rows(visible);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -1114,6 +1123,7 @@ function renderD3(promos) {
             <th>Angle</th>
             <th>Metrics / Asset Code</th>
             <th>Start Date</th>
+            <th>Testing CPI</th>
             <th>CPI on CPS</th>
             <th>Installs</th>
             <th>D3 Mature installs</th>
@@ -1146,6 +1156,7 @@ function d0Row(p, hidden = false) {
       <td class="left">${escHtml(p.angle)}</td>
       <td>${escHtml(p.assetCode)}</td>
       <td>${fmt(d[C.DATE])}</td>
+      <td>${fmt(valueAt(d, 'TESTING_CPI'))}</td>
       <td>${fmt(d[C.CPI])}</td>
       <td>${fmt(d[C.INSTALLS])}</td>
       <td>${fmt(d[C.SPENT])}</td>
@@ -1165,7 +1176,7 @@ function renderD0(promos) {
 
   let rows = visible.map(p => d0Row(p)).join('');
   if (hiddenP.length) {
-    rows += `<tr class="hidden-divider"><td colspan="8">Hidden</td></tr>`;
+    rows += `<tr class="hidden-divider"><td colspan="9">Hidden</td></tr>`;
     rows += hiddenP.map(p => d0Row(p, true)).join('');
   }
 
@@ -1177,6 +1188,7 @@ function renderD0(promos) {
             <th>Angle</th>
             <th>Metrics / Asset Code</th>
             <th>Start Date</th>
+            <th>Testing CPI</th>
             <th>CPI on CPS</th>
             <th>Installs</th>
             <th>Amount spent</th>
