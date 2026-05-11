@@ -541,17 +541,17 @@ function saveStore(s) {
   // Push to Supabase asynchronously (fire-and-forget)
   if (_sbReady && _sb) {
     _sb.from('admin_store')
-      .update({ data: s, updated_at: new Date().toISOString() })
-      .eq('id', 1)
+      .upsert({ id: 1, data: s, updated_at: new Date().toISOString() }, { onConflict: 'id' })
       .then(({ error }) => {
         if (error) { console.warn('Supabase write failed:', error.message); setSyncStatus('error'); }
+        else setSyncStatus('live');
       });
   }
 }
 function getActions()  { return getStore().actions  || {}; }
 function getHidden(scope = 'default') {
-  if (scope === 'default') return getStore().hidden || [];
-  return (getStore().hiddenBySection || {})[scope] || [];
+  if (scope === 'default') return [...(getStore().hidden || [])];
+  return [...((getStore().hiddenBySection || {})[scope] || [])];
 }
 function getNewAds()   { return getStore().newAds   || []; }
 function getQueue()    { return getStore().queue     || []; }
@@ -561,16 +561,16 @@ function setActions(v)      { const s = getStore(); s.actions      = v; saveStor
 function setHidden(v, scope = 'default') {
   const s = getStore();
   if (scope === 'default') {
-    s.hidden = v;
+    s.hidden = [...v];
   } else {
     s.hiddenBySection = s.hiddenBySection || {};
-    s.hiddenBySection[scope] = v;
+    s.hiddenBySection[scope] = [...v];
   }
   saveStore(s);
 }
 function setNewAds(v)       { const s = getStore(); s.newAds       = v; saveStore(s); }
 function setQueue(v)        { const s = getStore(); s.queue        = v; saveStore(s); }
-function setCrackedAssets(v) { const s = getStore(); s.crackedAssets = v; saveStore(s); }
+function setCrackedAssets(v) { const s = getStore(); s.crackedAssets = [...v]; saveStore(s); }
 function getManualPromos()  { const mp = getStore().manualPromos || {}; return { d7: mp.d7||[], d3: mp.d3||[], d0: mp.d0||[] }; }
 function setManualPromos(v) { const s = getStore(); s.manualPromos = v; saveStore(s); }
 
