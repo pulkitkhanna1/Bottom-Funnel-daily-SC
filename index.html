@@ -541,7 +541,8 @@ function saveStore(s) {
   // Push to Supabase asynchronously (fire-and-forget)
   if (_sbReady && _sb) {
     _sb.from('admin_store')
-      .upsert({ id: 1, data: s, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+      .update({ data: s, updated_at: new Date().toISOString() })
+      .eq('id', 1)
       .then(({ error }) => {
         if (error) { console.warn('Supabase write failed:', error.message); setSyncStatus('error'); }
         else setSyncStatus('live');
