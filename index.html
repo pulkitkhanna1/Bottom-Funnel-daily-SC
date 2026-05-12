@@ -441,14 +441,14 @@ const STORE_KEY = 'bfu_admin_v1';
 let C = {
   ANGLE:    1,  METRIC:   2,  DATE:     3,  TESTING_CPI: 4,  CPI: 5,
   INSTALLS: 6,  SPENT:    7,  ACT_D0:   8,  ACT_D3:      9,
-  REC_D7:   14, D3H3:     40, D3H5:     41, D7H5_O:     42,
+  CONV_D7:  11, REC_D7:   14, D3H3:     40, D3H5:       41, D7H5_O: 42,
   D7H10_O:  43, D7H5_SS:  46, D7H10_SS: 47, D3_MAT:     48, D7_MAT: 49,
 };
 
 // Column-letter → semantic key (used as fallback when labels are empty)
 const LETTER_TO_KEY = {
   B:'ANGLE', C:'METRIC', D:'DATE', E:'TESTING_CPI', F:'CPI', G:'INSTALLS', H:'SPENT',
-  I:'ACT_D0', J:'ACT_D3', O:'REC_D7',
+  I:'ACT_D0', J:'ACT_D3', L:'CONV_D7', O:'REC_D7',
   AO:'D3H3', AP:'D3H5', AQ:'D7H5_O', AR:'D7H10_O',
   AU:'D7H5_SS', AV:'D7H10_SS', AW:'D3_MAT', AX:'D7_MAT',
 };
@@ -465,6 +465,7 @@ const LABEL_RULES = [
   { key: 'SPENT',    test: s => /amount.?spent/i.test(s) },
   { key: 'ACT_D0',   test: s => /\bd0\b/i.test(s) },
   { key: 'ACT_D3',   test: s => /activation.*\bd3\b|\bd3\b.*activation/i.test(s) },
+  { key: 'CONV_D7',  test: s => /conversion.*\bd7\b|\bd7\b.*conversion/i.test(s) },
   { key: 'REC_D7',   test: s => /recovery.*\bd7\b|\bd7\b.*recovery/i.test(s) },
   { key: 'D3H3',     test: s => /d3h3/i.test(s) },
   { key: 'D3H5',     test: s => /d3h5/i.test(s) },
@@ -995,11 +996,8 @@ function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
         <td rowspan="2" class="left">${escHtml(p.angle)}</td>
         <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
+        <td>${fmt(b[C.CONV_D7])}</td>
         <td>${fmt(b[C.REC_D7])}</td>
-        <td>${fmt(b[C.D3H3])}</td>
-        <td>${fmt(b[C.D3H5])}</td>
-        <td>${fmt(b[C.D7H5_O])}</td>
-        <td>${fmt(b[C.D7H10_O])}</td>
         <td>${fmt(b[C.D7H5_SS])}</td>
         <td>${fmt(b[C.D7H10_SS])}</td>
         ${actionCell(p, 2, hideScope, moveTarget)}
@@ -1015,11 +1013,8 @@ function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
         <td>${fmt(d[C.SPENT])}</td>
         ${cellT(d[C.ACT_D0], 0.23)}
         ${cell(d[C.ACT_D3],   b[C.ACT_D3])}
+        ${cell(d[C.CONV_D7],  b[C.CONV_D7])}
         ${cell(d[C.REC_D7],   b[C.REC_D7])}
-        ${cell(d[C.D3H3],     b[C.D3H3])}
-        ${cell(d[C.D3H5],     b[C.D3H5])}
-        ${cell(d[C.D7H5_O],   b[C.D7H5_O])}
-        ${cell(d[C.D7H10_O],  b[C.D7H10_O])}
         ${cell(d[C.D7H5_SS],  b[C.D7H5_SS])}
         ${cell(d[C.D7H10_SS], b[C.D7H10_SS])}
       </tr>`;
@@ -1033,7 +1028,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return `<p style="color:var(--muted);font-size:13px;padding:8px 0">${emptyLabel}</p>`;
 
-  const colCount = 19;
+  const colCount = 16;
   let rows = d7Rows(visible, '', hideScope, moveTarget);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -1055,17 +1050,15 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
             <th rowspan="2">D7 Mature installs</th>
             <th rowspan="2">Amount spent</th>
             <th colspan="2">Activation</th>
+            <th colspan="1">Conversion</th>
             <th colspan="1">Recovery</th>
-            <th colspan="2">Retention (Overall)</th>
-            <th colspan="2">Retention (Overall)</th>
             <th colspan="2">Retention (Same Show)</th>
             <th rowspan="2" class="action-cell">Action</th>
           </tr>
           <tr class="sub">
             <th>D0</th><th>D3</th>
             <th>D7</th>
-            <th>D3H3</th><th>D3H5</th>
-            <th>D7H5</th><th>D7H10</th>
+            <th>D7</th>
             <th>D7H5</th><th>D7H10</th>
           </tr>
         </thead>
