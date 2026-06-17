@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     :root {
@@ -438,47 +439,42 @@ const STORE_KEY = 'bfu_admin_v1';
 // Column indices — built dynamically from sheet header labels (see buildC below).
 // Fallback hardcoded values (by column letter) used if label matching fails.
 let C = {
-  METRIC:      0,
-  ANGLE:       2,
-  DATE:        37,
-  TESTING_CPI: 14,
-  CPI:         40,
-  INSTALLS:    36,
-  SPENT:       17,
-  CTR:         21,
-  CTI:         22,
-  ACT_D0:      41,
-  ACT_D3:      42,
+  ANGLE:    1,  METRIC:   2,  DATE:     3,  TESTING_CPI: 4,  CPI: 5,
+  INSTALLS: 6,  SPENT:    7,  ACT_D0:   8,  ACT_D3:      9,
+  CONV_D7:  11, REC_D7:   14, D3H3:     40, D3H5:       41, D7H5_O: 42,
+  D7H10_O:  43, D7H5_SS:  46, D7H10_SS: 47, D3_MAT:     48, D7_MAT: 49,
 };
 
 // Column-letter → semantic key (used as fallback when labels are empty)
 const LETTER_TO_KEY = {
-  A: 'METRIC',
-  C: 'ANGLE',
-  AL: 'DATE',
-  O: 'TESTING_CPI',
-  AO: 'CPI',
-  AK: 'INSTALLS',
-  R: 'SPENT',
-  V: 'CTR',
-  W: 'CTI',
-  AP: 'ACT_D0',
-  AQ: 'ACT_D3'
+  B:'ANGLE', C:'METRIC', D:'DATE', E:'TESTING_CPI', F:'CPI', G:'INSTALLS', H:'SPENT',
+  I:'ACT_D0', J:'ACT_D3', L:'CONV_D7', O:'REC_D7',
+  AO:'D3H3', AP:'D3H5', AQ:'D7H5_O', AR:'D7H10_O',
+  AU:'D7H5_SS', AV:'D7H10_SS', AW:'D3_MAT', AX:'D7_MAT',
 };
 
 // Label patterns — matched against GViz column labels (case-insensitive)
+// List order matters: duplicates (D7H5, D7H10) are resolved by first/second occurrence
 const LABEL_RULES = [
-  { key: 'METRIC',      test: s => /metrics|asset.?code|ga\s*\/\s*gi\s*code/i.test(s) },
-  { key: 'ANGLE',       test: s => /\bangle\b/i.test(s) },
-  { key: 'DATE',        test: s => /start.?date|upload.?date/i.test(s) },
-  { key: 'TESTING_CPI', test: s => /testing.?cpi|cost\s*per\s*app\s*install/i.test(s) },
-  { key: 'CPI',         test: s => /cpi\s*on\s*cps|cps\s*results.*ph\s*cpi/i.test(s) },
-  { key: 'INSTALLS',    test: s => /^installs$|app\s*installs/i.test(s.trim()) },
-  { key: 'SPENT',       test: s => /amount.?spent/i.test(s) },
-  { key: 'CTR',         test: s => /ctr\s*\(link/i.test(s) },
-  { key: 'CTI',         test: s => /click\s*to\s*install/i.test(s) },
-  { key: 'ACT_D0',      test: s => /\bd0\b/i.test(s) },
-  { key: 'ACT_D3',      test: s => /activation.*\bd3\b|\bd3\b.*activation/i.test(s) },
+  { key: 'ANGLE',    test: s => /\bangle\b/i.test(s) },
+  { key: 'METRIC',   test: s => /metrics|asset.?code/i.test(s) },
+  { key: 'DATE',     test: s => /start.?date|upload.?date/i.test(s) },
+  { key: 'TESTING_CPI', test: s => /testing.?cpi/i.test(s) },
+  { key: 'CPI',      test: s => /cpi.on.cps/i.test(s) },
+  { key: 'INSTALLS', test: s => /^installs$/i.test(s.trim()) },
+  { key: 'SPENT',    test: s => /amount.?spent/i.test(s) },
+  { key: 'ACT_D0',   test: s => /\bd0\b/i.test(s) },
+  { key: 'ACT_D3',   test: s => /activation.*\bd3\b|\bd3\b.*activation/i.test(s) },
+  { key: 'CONV_D7',  test: s => /conversion.*\bd7\b|\bd7\b.*conversion/i.test(s) },
+  { key: 'REC_D7',   test: s => /recovery.*\bd7\b|\bd7\b.*recovery/i.test(s) },
+  { key: 'D3H3',     test: s => /d3h3/i.test(s) },
+  { key: 'D3H5',     test: s => /d3h5/i.test(s) },
+  { key: 'D7H5_O',   test: s => /overall.*d7h5|d7h5.*overall/i.test(s) },
+  { key: 'D7H10_O',  test: s => /overall.*d7h10|d7h10.*overall/i.test(s) },
+  { key: 'D7H5_SS',  test: s => /same.?show.*d7h5|d7h5.*same.?show/i.test(s) },
+  { key: 'D7H10_SS', test: s => /same.?show.*d7h10|d7h10.*same.?show/i.test(s) },
+  { key: 'D3_MAT',   test: s => /d3.?mature/i.test(s) },
+  { key: 'D7_MAT',   test: s => /d7.?mature/i.test(s) },
 ];
 
 function buildC(cols) {
@@ -512,14 +508,47 @@ let adminMode  = false;
 let promoData  = { d7: [], d3: [], d0: [] };
 let extendedMetricsVisible = false;
 
+// ── SUPABASE ──────────────────────────────────────────────────────────────────
+let _sb      = null;   // Supabase client (null = not configured)
+let _sbReady = false;  // true once initial fetch succeeded
 let _cache   = {};     // in-memory store; all getters read from here synchronously
+
+const SB_URL = 'https://ktufdpuaoqfueutqvqiw.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt0dWZkcHVhb3FmdWV1dHF2cWl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5Mjc1MTAsImV4cCI6MjA5MjUwMzUxMH0.CUDdBN_0yXb_Z_rpkCCVRoavip0-U7-jdrtjIeejRFk';
+
+function getSbConfig() {
+  // Allow URL hash override; fall back to hardcoded constants
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const url = params.get('sbUrl') || SB_URL;
+  const key = params.get('sbKey') || SB_KEY;
+  return (url && key) ? { url, key } : null;
+}
+
+function setSyncStatus(state) { // state: 'live' | 'local' | 'error'
+  const dot   = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  if (!dot) return;
+  dot.className = state;
+  label.textContent = state === 'live' ? 'Cloud synced' : state === 'error' ? 'Sync error (local)' : 'Local only';
+}
 
 // ── ADMIN STORAGE ─────────────────────────────────────────────────────────────
 function getStore() { return _cache; }
 
 function saveStore(s) {
   _cache = s;
+  // Always mirror to localStorage as fallback
   try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch {}
+  // Push to Supabase asynchronously (fire-and-forget)
+  if (_sbReady && _sb) {
+    _sb.from('admin_store')
+      .update({ data: s, updated_at: new Date().toISOString() })
+      .eq('id', 1)
+      .then(({ error }) => {
+        if (error) { console.warn('Supabase write failed:', error.message); setSyncStatus('error'); }
+        else setSyncStatus('live');
+      });
+  }
 }
 function getActions()  { return getStore().actions  || {}; }
 function getHidden(scope = 'default') {
@@ -537,19 +566,36 @@ function setHidden(v, scope = 'default') {
     s.hidden = [...v];
   } else {
     s.hiddenBySection = s.hiddenBySection || {};
-    s.hiddenBySection// Convert a stored manual promo → promo object used by rendering functions
+    s.hiddenBySection[scope] = [...v];
+  }
+  saveStore(s);
+}
+function setNewAds(v)       { const s = getStore(); s.newAds       = v; saveStore(s); }
+function setQueue(v)        { const s = getStore(); s.queue        = v; saveStore(s); }
+function setCrackedAssets(v) { const s = getStore(); s.crackedAssets = [...v]; saveStore(s); }
+function getManualPromos()  { const mp = getStore().manualPromos || {}; return { d7: mp.d7||[], d3: mp.d3||[], d0: mp.d0||[] }; }
+function setManualPromos(v) { const s = getStore(); s.manualPromos = v; saveStore(s); }
+
+// Convert a stored manual promo → promo object used by rendering functions
 function manualToPromo(m) {
   const pct = v => v !== '' && v != null ? v + '%' : '';
   const d = [];
-  d[C.DATE]        = m.date        || '';
-  d[C.TESTING_CPI] = m.testingCpi  ? '$' + m.testingCpi  : '';
-  d[C.CPI]         = m.cpi         ? '$' + m.cpi         : '';
-  d[C.INSTALLS]    = m.installs    || '';
-  d[C.SPENT]       = m.spent       ? '$' + m.spent       : '';
-  d[C.CTR]         = pct(m.ctr);
-  d[C.CTI]         = pct(m.cti);
-  d[C.ACT_D0]      = pct(m.actD0);
-  d[C.ACT_D3]      = pct(m.actD3);
+  d[C.DATE]     = m.date     || '';
+  d[C.CPI]      = m.cpi      ? '$' + m.cpi      : '';
+  d[C.INSTALLS] = m.installs || '';
+  d[C.SPENT]    = m.spent    ? '$' + m.spent     : '';
+  d[C.ACT_D0]   = pct(m.actD0);
+  d[C.ACT_D3]   = pct(m.actD3);
+  d[C.REC_D7]   = pct(m.recD7);
+  d[C.D3_MAT]   = m.d3Mat   || '';
+  d[C.D7_MAT]   = m.d7Mat   || '';
+  d[C.D3H3]     = pct(m.d3h3);
+  // D3 bucket: D3H5 slot holds D3H5 SS; D7 bucket: D3H5 slot holds D3H5 Overall
+  d[C.D3H5]     = m.bucket === 'd3' ? pct(m.d3h5ss) : pct(m.d3h5);
+  d[C.D7H5_O]   = pct(m.d7h5o);
+  d[C.D7H10_O]  = pct(m.d7h10o);
+  d[C.D7H5_SS]  = pct(m.d7h5ss);
+  d[C.D7H10_SS] = pct(m.d7h10ss);
   return { angle: m.angle, assetCode: m.assetCode, data: d, bench: [], _manual: true, _id: m.id, _bucket: m.bucket };
 }
 
@@ -563,15 +609,38 @@ function openAddPromoModal(bucket) {
     'Add ' + (bucket === 'd7' ? 'D7 Mature' : bucket === 'd3' ? 'D3 Mature' : 'D0') + ' Promo';
   document.getElementById('promo-form').reset();
 
+  // Show/hide rows by bucket
   const show = id => { const el = document.getElementById(id); if (el) el.style.display = ''; };
   const hide  = id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
 
-  // Show actD3 only for d3 and d7 buckets
-  if (bucket === 'd3' || bucket === 'd7') {
-    show('pf-row-actd3');
-  } else {
-    hide('pf-row-actd3');
-  }
+  // sections
+  show('pf-sec-d0');    show('pf-sec-d3d7');  show('pf-sec-d7');
+
+  // d0 fields
+  bucket === 'd0' ? show('pf-row-actd0') : hide('pf-row-actd0');
+
+  // d3 + d7 fields
+  const d3d7 = bucket === 'd3' || bucket === 'd7';
+  d3d7 ? show('pf-row-d3mat')  : hide('pf-row-d3mat');
+  d3d7 ? show('pf-row-actd3')  : hide('pf-row-actd3');
+  bucket === 'd3' ? show('pf-row-d3h5ss') : hide('pf-row-d3h5ss');
+
+  // d7-only fields
+  const d7only = bucket === 'd7';
+  d7only ? show('pf-row-actd0')  : (bucket !== 'd0' ? hide('pf-row-actd0') : null);
+  d7only ? show('pf-row-d7mat')  : hide('pf-row-d7mat');
+  d7only ? show('pf-row-recd7')  : hide('pf-row-recd7');
+  d7only ? show('pf-row-d3h3')   : hide('pf-row-d3h3');
+  d7only ? show('pf-row-d3h5')   : hide('pf-row-d3h5');
+  d7only ? show('pf-row-d7h5o')  : hide('pf-row-d7h5o');
+  d7only ? show('pf-row-d7h10o') : hide('pf-row-d7h10o');
+  d7only ? show('pf-row-d7h5ss') : hide('pf-row-d7h5ss');
+  d7only ? show('pf-row-d7h10ss'): hide('pf-row-d7h10ss');
+
+  // hide empty sections
+  if (bucket === 'd0')  { hide('pf-sec-d3d7'); hide('pf-sec-d7'); }
+  if (bucket === 'd3')  { hide('pf-sec-d0');   hide('pf-sec-d7'); }
+  if (bucket === 'd7')  { hide('pf-sec-d0'); }
 
   document.getElementById('promo-modal').style.display = '';
 }
@@ -585,24 +654,31 @@ function saveManualPromo(e) {
   const g = id => document.getElementById(id).value.trim();
   const mp = getManualPromos();
   mp[_modalBucket].push({
-    id:          Date.now().toString(),
-    bucket:      _modalBucket,
-    angle:       g('pf-angle'),
-    assetCode:   g('pf-code'),
-    date:        g('pf-date'),
-    testingCpi:  g('pf-testing-cpi'),
-    cpi:         g('pf-cpi'),
-    installs:    g('pf-installs'),
-    spent:       g('pf-spent'),
-    ctr:         g('pf-ctr'),
-    cti:         g('pf-cti'),
-    actD0:       g('pf-actd0'),
-    actD3:       g('pf-actd3'),
+    id:       Date.now().toString(),
+    bucket:   _modalBucket,
+    angle:    g('pf-angle'),
+    assetCode: g('pf-code'),
+    date:     g('pf-date'),
+    cpi:      g('pf-cpi'),
+    installs: g('pf-installs'),
+    spent:    g('pf-spent'),
+    actD0:    g('pf-actd0'),
+    actD3:    g('pf-actd3'),
+    recD7:    g('pf-recd7'),
+    d3Mat:    g('pf-d3mat'),
+    d7Mat:    g('pf-d7mat'),
+    d3h3:     g('pf-d3h3'),
+    d3h5:     g('pf-d3h5'),
+    d3h5ss:   g('pf-d3h5ss'),
+    d7h5o:    g('pf-d7h5o'),
+    d7h10o:   g('pf-d7h10o'),
+    d7h5ss:   g('pf-d7h5ss'),
+    d7h10ss:  g('pf-d7h10ss'),
   });
   setManualPromos(mp);
   closePromoModal();
   render();
-
+}
 
 function deleteManualPromo(id, bucket) {
   if (!requireAdmin()) return;
@@ -705,24 +781,10 @@ function buildPromos(rows) {
 
 function daysSinceStart(dateStr) {
   if (!dateStr || dateStr === '#N/A' || !dateStr.trim()) return null;
-  let start = null;
-  const str = dateStr.trim();
-  if (str.startsWith('Date(')) {
-    const match = str.match(/Date\((\d+),\s*(\d+),\s*(\d+)\)/);
-    if (match) {
-      const y = parseInt(match[1], 10);
-      const m = parseInt(match[2], 10);
-      const d = parseInt(match[3], 10);
-      start = new Date(y, m, d);
-    }
-  } else {
-    const parts = str.split('/');
-    if (parts.length === 3) {
-      const [m, d, y] = parts.map(Number);
-      start = new Date(y, m - 1, d);
-    }
-  }
-  if (!start || isNaN(start.getTime())) return null;
+  const parts = dateStr.trim().split('/');
+  if (parts.length !== 3) return null;
+  const [m, d, y] = parts.map(Number);
+  const start = new Date(y, m - 1, d);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return Math.floor((today - start) / 86400000);
 }
@@ -731,8 +793,9 @@ function categorize(promos) {
   const d7 = [], d3 = [], d0 = [];
   for (const p of promos) {
     const days = daysSinceStart(p.data[C.DATE]);
+    const d3m  = parseVal(p.data[C.D3_MAT]);
     if (days !== null && days > 12) d7.push(p);
-    else if (days !== null && days >= 3) d3.push(p);
+    else if (d3m !== null && d3m >= 30) d3.push(p);
     else d0.push(p);
   }
   const byAngle = (a, b) => a.angle.localeCompare(b.angle);
@@ -924,23 +987,36 @@ function escHtml(s) {
 
 function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
   let out = '';
-  const dataCls  = cls ? 'hidden-data'  : 'data-row';
+  const bench = cls ? 'hidden-bench' : 'bench-row';
+  const data  = cls ? 'hidden-data'  : 'data-row';
   for (const p of promoList) {
-    const d = p.data;
+    const d = p.data, b = p.bench || [];
     out += `
-      <tr class="${dataCls}">
-        <td class="left">${escHtml(p.angle)}</td>
+      <tr class="${bench}">
+        <td rowspan="2" class="left">${escHtml(p.angle)}</td>
+        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        <td>${fmt(b[C.ACT_D3])}</td>
+        <td>${fmt(b[C.CONV_D7])}</td>
+        <td>${fmt(b[C.REC_D7])}</td>
+        <td>${fmt(b[C.D7H5_SS])}</td>
+        <td>${fmt(b[C.D7H10_SS])}</td>
+        ${actionCell(p, 2, hideScope, moveTarget)}
+      </tr>
+      <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
         <td>${fmt(d[C.DATE])}</td>
-        <td>${fmt(d[C.TESTING_CPI])}</td>
+        <td>${fmt(valueAt(d, 'TESTING_CPI'))}</td>
         <td>${fmt(d[C.CPI])}</td>
         <td>${fmt(d[C.INSTALLS])}</td>
+        <td>${fmt(d[C.D3_MAT])}</td>
+        <td>${fmt(d[C.D7_MAT])}</td>
         <td>${fmt(d[C.SPENT])}</td>
-        <td>${fmt(d[C.CTR])}</td>
-        <td>${fmt(d[C.CTI])}</td>
         ${cellT(d[C.ACT_D0], 0.23)}
-        <td>${fmt(d[C.ACT_D3])}</td>
-        ${actionCell(p, 1, hideScope, moveTarget)}
+        ${cell(d[C.ACT_D3],   b[C.ACT_D3])}
+        ${cell(d[C.CONV_D7],  b[C.CONV_D7])}
+        ${cell(d[C.REC_D7],   b[C.REC_D7])}
+        ${cell(d[C.D7H5_SS],  b[C.D7H5_SS])}
+        ${cell(d[C.D7H10_SS], b[C.D7H10_SS])}
       </tr>`;
   }
   return out;
@@ -952,7 +1028,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return `<p style="color:var(--muted);font-size:13px;padding:8px 0">${emptyLabel}</p>`;
 
-  const colCount = 12;
+  const colCount = 16;
   let rows = d7Rows(visible, '', hideScope, moveTarget);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -964,18 +1040,26 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
       <table>
         <thead>
           <tr>
-            <th>Angle</th>
-            <th>Metrics / Asset Code</th>
-            <th>${dateLabel}</th>
-            <th>USA CPI</th>
-            <th>PH CPI</th>
-            <th>Installs</th>
-            <th>Amount spent</th>
-            <th>CTR</th>
-            <th>CTI</th>
-            <th>Activation D0</th>
-            <th>Activation D3</th>
-            <th class="action-cell">Action</th>
+            <th rowspan="2">Angle</th>
+            <th rowspan="2">Metrics / Asset Code</th>
+            <th rowspan="2">${dateLabel}</th>
+            <th rowspan="2">Testing CPI</th>
+            <th rowspan="2">CPI on CPS</th>
+            <th rowspan="2">Installs</th>
+            <th rowspan="2">D3 Mature installs</th>
+            <th rowspan="2">D7 Mature installs</th>
+            <th rowspan="2">Amount spent</th>
+            <th colspan="2">Activation</th>
+            <th colspan="1">Conversion</th>
+            <th colspan="1">Recovery</th>
+            <th colspan="2">Retention (Same Show)</th>
+            <th rowspan="2" class="action-cell">Action</th>
+          </tr>
+          <tr class="sub">
+            <th>D0</th><th>D3</th>
+            <th>D7</th>
+            <th>D7</th>
+            <th>D7H5</th><th>D7H10</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -985,23 +1069,28 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
 
 function d3Rows(promoList, cls = '') {
   let out = '';
-  const dataCls = cls ? 'hidden-data' : 'data-row';
+  const bench = cls ? 'hidden-bench' : 'bench-row';
+  const data  = cls ? 'hidden-data'  : 'data-row';
   for (const p of promoList) {
-    const d = p.data;
+    const d = p.data, b = p.bench || [];
     out += `
-      <tr class="${dataCls}">
-        <td class="left">${escHtml(p.angle)}</td>
+      <tr class="${bench}">
+        <td rowspan="2" class="left">${escHtml(p.angle)}</td>
+        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td>
+        <td>${fmt(b[C.ACT_D3])}</td>
+        <td>${fmt(b[C.D3H5])}</td>
+        ${actionCell(p, 2)}
+      </tr>
+      <tr class="${data}">
         <td>${escHtml(p.assetCode)}</td>
         <td>${fmt(d[C.DATE])}</td>
-        <td>${fmt(d[C.TESTING_CPI])}</td>
+        <td>${fmt(valueAt(d, 'TESTING_CPI'))}</td>
         <td>${fmt(d[C.CPI])}</td>
         <td>${fmt(d[C.INSTALLS])}</td>
+        <td>${fmt(d[C.D3_MAT])}</td>
         <td>${fmt(d[C.SPENT])}</td>
-        <td>${fmt(d[C.CTR])}</td>
-        <td>${fmt(d[C.CTI])}</td>
-        ${cellT(d[C.ACT_D0], 0.23)}
-        <td>${fmt(d[C.ACT_D3])}</td>
-        ${actionCell(p, 1)}
+        ${cell(d[C.ACT_D3], b[C.ACT_D3])}
+        ${cell(d[C.D3H5],   b[C.D3H5])}
       </tr>`;
   }
   return out;
@@ -1013,7 +1102,7 @@ function renderD3(promos) {
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D3 Mature promos.</p>';
 
-  const colCount = 12;
+  const colCount = 11;
   let rows = d3Rows(visible);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -1028,14 +1117,13 @@ function renderD3(promos) {
             <th>Angle</th>
             <th>Metrics / Asset Code</th>
             <th>Start Date</th>
-            <th>USA CPI</th>
-            <th>PH CPI</th>
+            <th>Testing CPI</th>
+            <th>CPI on CPS</th>
             <th>Installs</th>
+            <th>D3 Mature installs</th>
             <th>Amount spent</th>
-            <th>CTR</th>
-            <th>CTI</th>
-            <th>Activation D0</th>
             <th>Activation D3</th>
+            <th>D3H5 SS</th>
             <th class="action-cell">Action</th>
           </tr>
         </thead>
@@ -1045,7 +1133,7 @@ function renderD3(promos) {
 }
 
 function d0Row(p, hidden = false) {
-  const d = p.data;
+  const d = p.data, b = p.bench || [];
   const isHid = getHidden().includes(p.assetCode);
   const delBtn = adminMode && p._manual
     ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
@@ -1062,12 +1150,10 @@ function d0Row(p, hidden = false) {
       <td class="left">${escHtml(p.angle)}</td>
       <td>${escHtml(p.assetCode)}</td>
       <td>${fmt(d[C.DATE])}</td>
-      <td>${fmt(d[C.TESTING_CPI])}</td>
+      <td>${fmt(valueAt(d, 'TESTING_CPI'))}</td>
       <td>${fmt(d[C.CPI])}</td>
       <td>${fmt(d[C.INSTALLS])}</td>
       <td>${fmt(d[C.SPENT])}</td>
-      <td>${fmt(d[C.CTR])}</td>
-      <td>${fmt(d[C.CTI])}</td>
       ${cellT(d[C.ACT_D0], 0.23)}
       <td class="action-cell left">${adminCtrl}${adminMode
         ? `<textarea class="action-textarea" oninput="saveActionInline('${esc(p.assetCode)}',this.value)">${escHtml(getAction(p.assetCode))}</textarea>`
@@ -1082,10 +1168,9 @@ function renderD0(promos) {
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D0 promos.</p>';
 
-  const colCount = 11;
   let rows = visible.map(p => d0Row(p)).join('');
   if (hiddenP.length) {
-    rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
+    rows += `<tr class="hidden-divider"><td colspan="9">Hidden</td></tr>`;
     rows += hiddenP.map(p => d0Row(p, true)).join('');
   }
 
@@ -1097,12 +1182,10 @@ function renderD0(promos) {
             <th>Angle</th>
             <th>Metrics / Asset Code</th>
             <th>Start Date</th>
-            <th>USA CPI</th>
-            <th>PH CPI</th>
+            <th>Testing CPI</th>
+            <th>CPI on CPS</th>
             <th>Installs</th>
             <th>Amount spent</th>
-            <th>CTR</th>
-            <th>CTI</th>
             <th>Activation D0</th>
             <th class="action-cell">Action</th>
           </tr>
@@ -1369,7 +1452,34 @@ function seedDefaultActions() {
   // 1. Hydrate cache from localStorage instantly (no flicker)
   try { _cache = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { _cache = {}; }
 
-  // 2. Render
+  // 2. Attempt Supabase connection via URL hash params
+  const cfg = getSbConfig();
+  if (cfg) {
+    try {
+      _sb = supabase.createClient(cfg.url, cfg.key);
+      const { data, error } = await _sb.from('admin_store').select('data').eq('id', 1).single();
+      if (error) throw error;
+      _cache = data.data || {};
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(_cache)); } catch {}
+      _sbReady = true;
+      setSyncStatus('live');
+
+      // Realtime: refresh cache + re-render when another user saves
+      _sb.channel('admin-sync')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'admin_store' },
+          payload => {
+            _cache = payload.new.data || {};
+            try { localStorage.setItem(STORE_KEY, JSON.stringify(_cache)); } catch {}
+            render();
+          })
+        .subscribe();
+    } catch (e) {
+      console.warn('Supabase unavailable, using localStorage:', e.message);
+      setSyncStatus('error');
+    }
+  }
+
+  // 3. Render
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric'
   });
@@ -1380,7 +1490,7 @@ function seedDefaultActions() {
 <!-- Sync status indicator -->
 <div id="sync-indicator">
   <span id="sync-dot" class="local"></span>
-  <span id="sync-label">Local Mode</span>
+  <span id="sync-label">Local only</span>
 </div>
 
 <!-- Add Promo Modal -->
@@ -1396,16 +1506,27 @@ function seedDefaultActions() {
       <div class="form-row"><label>Angle</label><input type="text" id="pf-angle" required placeholder="e.g. FLBM Evaluator"/></div>
       <div class="form-row"><label>Asset Code</label><input type="text" id="pf-code" required placeholder="e.g. GU8250"/></div>
       <div class="form-row"><label>Start Date (M/D/YYYY)</label><input type="text" id="pf-date" placeholder="4/17/2026"/></div>
-      <div class="form-row"><label>USA CPI ($)</label><input type="number" step="0.01" min="0" id="pf-testing-cpi" placeholder="5.34"/></div>
-      <div class="form-row"><label>PH CPI ($)</label><input type="number" step="0.01" min="0" id="pf-cpi" placeholder="22.0"/></div>
+      <div class="form-row"><label>CPI on CPS ($)</label><input type="number" step="0.1" min="0" id="pf-cpi" placeholder="22.0"/></div>
       <div class="form-row"><label>Installs</label><input type="number" min="0" id="pf-installs" placeholder="100"/></div>
-      <div class="form-row"><label>Amount Spent ($)</label><input type="number" step="0.01" min="0" id="pf-spent" placeholder="2000"/></div>
-      <div class="form-row"><label>CTR (%)</label><input type="number" step="0.01" min="0" id="pf-ctr" placeholder="1.71"/></div>
-      <div class="form-row"><label>CTI (%)</label><input type="number" step="0.01" min="0" id="pf-cti" placeholder="15.93"/></div>
+      <div class="form-row"><label>Amount Spent ($)</label><input type="number" step="0.1" min="0" id="pf-spent" placeholder="2000"/></div>
 
-      <div class="form-section-label">Metrics</div>
+      <div id="pf-sec-d0" class="form-section-label">D0 Metrics</div>
       <div class="form-row" id="pf-row-actd0"><label>Activation D0 (%)</label><input type="number" step="0.1" id="pf-actd0" placeholder="18.5"/></div>
+
+      <div id="pf-sec-d3d7" class="form-section-label">D3 Metrics</div>
+      <div class="form-row" id="pf-row-d3mat"><label>D3 Mature installs</label><input type="number" min="0" id="pf-d3mat" placeholder="250"/></div>
       <div class="form-row" id="pf-row-actd3"><label>Activation D3 (%)</label><input type="number" step="0.1" id="pf-actd3" placeholder="24.5"/></div>
+      <div class="form-row" id="pf-row-d3h5ss"><label>D3H5 SS (%)</label><input type="number" step="0.1" id="pf-d3h5ss" placeholder="9.11"/></div>
+
+      <div id="pf-sec-d7" class="form-section-label">D7 Metrics</div>
+      <div class="form-row" id="pf-row-d7mat"><label>D7 Mature installs</label><input type="number" min="0" id="pf-d7mat" placeholder="200"/></div>
+      <div class="form-row" id="pf-row-recd7"><label>Recovery D7 (%)</label><input type="number" step="0.1" id="pf-recd7" placeholder="2.8"/></div>
+      <div class="form-row" id="pf-row-d3h3"><label>D3H3 (%)</label><input type="number" step="0.1" id="pf-d3h3" placeholder="15.55"/></div>
+      <div class="form-row" id="pf-row-d3h5"><label>D3H5 Overall (%)</label><input type="number" step="0.1" id="pf-d3h5" placeholder="10.03"/></div>
+      <div class="form-row" id="pf-row-d7h5o"><label>D7H5 Overall (%)</label><input type="number" step="0.1" id="pf-d7h5o" placeholder="17.23"/></div>
+      <div class="form-row" id="pf-row-d7h10o"><label>D7H10 Overall (%)</label><input type="number" step="0.1" id="pf-d7h10o" placeholder="9.49"/></div>
+      <div class="form-row" id="pf-row-d7h5ss"><label>D7H5 Same Show (%)</label><input type="number" step="0.1" id="pf-d7h5ss" placeholder="14.01"/></div>
+      <div class="form-row" id="pf-row-d7h10ss"><label>D7H10 Same Show (%)</label><input type="number" step="0.1" id="pf-d7h10ss" placeholder="4.38"/></div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
         <button type="button" class="btn" onclick="closePromoModal()">Cancel</button>
