@@ -94,6 +94,25 @@
     .btn-sm.hide-btn { border-color: #e57373; color: #c62828; }
     .btn-sm.show-btn { border-color: #66bb6a; color: #2e7d32; }
     .btn-sm.edit-btn { border-color: #5c85d6; color: #1a3a7a; }
+    .search-input {
+      display: block;
+      padding: 6px 12px;
+      border: 2px solid var(--line);
+      background: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 4px;
+      width: 100%;
+      max-width: 480px;
+      margin: 4px 0 12px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .search-input:focus {
+      outline: none;
+      background: #fffdf5;
+      border-color: var(--line);
+    }
     .action-textarea {
       width: 100%;
       min-height: 60px;
@@ -118,6 +137,9 @@
       border: 2px solid var(--line);
       background: #fff;
       overflow-x: auto;
+    }
+    .table-wrap.extended-active table {
+      min-width: 1600px;
     }
 
     .extended-wrap table {
@@ -399,6 +421,7 @@
   </div>
 
   <div class="status-bar" id="status-bar"></div>
+  <input type="search" id="search-input" class="search-input" placeholder="Search angle, asset, action..." oninput="onSearchChange(this.value)"/>
 
   <div id="report-content"></div>
 
@@ -507,6 +530,7 @@ function buildC(cols) {
 let adminMode  = false;
 let promoData  = { d7: [], d3: [], d0: [] };
 let extendedMetricsVisible = false;
+let searchQuery = '';
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
 let _sb      = null;   // Supabase client (null = not configured)
@@ -1000,6 +1024,12 @@ function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
         <td>${fmt(b[C.REC_D7])}</td>
         <td>${fmt(b[C.D7H5_SS])}</td>
         <td>${fmt(b[C.D7H10_SS])}</td>
+        ${extendedMetricsVisible ? `
+          <td>${fmt(b[C.D3H3])}</td>
+          <td>${fmt(b[C.D3H5])}</td>
+          <td>${fmt(b[C.D7H5_O])}</td>
+          <td>${fmt(b[C.D7H10_O])}</td>
+        ` : ''}
         ${actionCell(p, 2, hideScope, moveTarget)}
       </tr>
       <tr class="${data}">
@@ -1017,6 +1047,12 @@ function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
         ${cell(d[C.REC_D7],   b[C.REC_D7])}
         ${cell(d[C.D7H5_SS],  b[C.D7H5_SS])}
         ${cell(d[C.D7H10_SS], b[C.D7H10_SS])}
+        ${extendedMetricsVisible ? `
+          ${cell(d[C.D3H3],   b[C.D3H3])}
+          ${cell(d[C.D3H5],   b[C.D3H5])}
+          ${cell(d[C.D7H5_O],  b[C.D7H5_O])}
+          ${cell(d[C.D7H10_O], b[C.D7H10_O])}
+        ` : ''}
       </tr>`;
   }
   return out;
@@ -1028,7 +1064,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return `<p style="color:var(--muted);font-size:13px;padding:8px 0">${emptyLabel}</p>`;
 
-  const colCount = 16;
+  const colCount = extendedMetricsVisible ? 20 : 16;
   let rows = d7Rows(visible, '', hideScope, moveTarget);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -1036,7 +1072,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
   }
 
   return `
-    <div class="table-wrap">
+    <div class="table-wrap ${extendedMetricsVisible ? 'extended-active' : ''}">
       <table>
         <thead>
           <tr>
@@ -1053,6 +1089,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
             <th colspan="1">Conversion</th>
             <th colspan="1">Recovery</th>
             <th colspan="2">Retention (Same Show)</th>
+            ${extendedMetricsVisible ? `<th colspan="4">Retention (Overall)</th>` : ''}
             <th rowspan="2" class="action-cell">Action</th>
           </tr>
           <tr class="sub">
@@ -1060,6 +1097,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
             <th>D7</th>
             <th>D7</th>
             <th>D7H5</th><th>D7H10</th>
+            ${extendedMetricsVisible ? `<th>D3H3</th><th>D3H5</th><th>D7H5</th><th>D7H10</th>` : ''}
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -1079,6 +1117,10 @@ function d3Rows(promoList, cls = '') {
         <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
         <td>${fmt(b[C.D3H5])}</td>
+        ${extendedMetricsVisible ? `
+          <td>${fmt(b[C.D3H3])}</td>
+          <td>${fmt(b[C.D3H5])}</td>
+        ` : ''}
         ${actionCell(p, 2)}
       </tr>
       <tr class="${data}">
@@ -1091,6 +1133,10 @@ function d3Rows(promoList, cls = '') {
         <td>${fmt(d[C.SPENT])}</td>
         ${cell(d[C.ACT_D3], b[C.ACT_D3])}
         ${cell(d[C.D3H5],   b[C.D3H5])}
+        ${extendedMetricsVisible ? `
+          ${cell(d[C.D3H3], b[C.D3H3])}
+          ${cell(d[C.D3H5], b[C.D3H5])}
+        ` : ''}
       </tr>`;
   }
   return out;
@@ -1102,7 +1148,7 @@ function renderD3(promos) {
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D3 Mature promos.</p>';
 
-  const colCount = 11;
+  const colCount = extendedMetricsVisible ? 13 : 11;
   let rows = d3Rows(visible);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -1110,7 +1156,7 @@ function renderD3(promos) {
   }
 
   return `
-    <div class="table-wrap">
+    <div class="table-wrap ${extendedMetricsVisible ? 'extended-active' : ''}">
       <table>
         <thead>
           <tr>
@@ -1124,6 +1170,7 @@ function renderD3(promos) {
             <th>Amount spent</th>
             <th>Activation D3</th>
             <th>D3H5 SS</th>
+            ${extendedMetricsVisible ? `<th>D3H3 (O)</th><th>D3H5 (O)</th>` : ''}
             <th class="action-cell">Action</th>
           </tr>
         </thead>
@@ -1195,8 +1242,27 @@ function renderD0(promos) {
     </div>`;
 }
 
+// ── SEARCH ────────────────────────────────────────────────────────────────────
+function onSearchChange(val) {
+  searchQuery = val.trim().toLowerCase();
+  render();
+}
+
+function filterPromos(promoList) {
+  if (!searchQuery) return promoList;
+  return promoList.filter(p => {
+    const angle = (p.angle || '').toLowerCase();
+    const assetCode = (p.assetCode || '').toLowerCase();
+    const action = (getAction(p.assetCode) || '').toLowerCase();
+    return angle.includes(searchQuery) || assetCode.includes(searchQuery) || action.includes(searchQuery);
+  });
+}
+
 function renderNewAds() {
-  const ads = cleanExpiredAds();
+  let ads = cleanExpiredAds();
+  if (searchQuery) {
+    ads = ads.filter(a => (a.text || '').toLowerCase().includes(searchQuery));
+  }
   if (!ads.length && !adminMode) return '';
   let items = '';
   for (let i = 0; i < ads.length; i++) {
@@ -1205,7 +1271,11 @@ function renderNewAds() {
       : '';
     items += `<div class="new-ad-item">${delBtn}<span>${escHtml(ads[i].text)}</span></div>`;
   }
-  if (!items && adminMode) items = '<span style="color:var(--muted);font-size:12px">No entries — add one above.</span>';
+  if (!items && adminMode) {
+    items = searchQuery 
+      ? '<span style="color:var(--muted);font-size:12px">No matching entries.</span>' 
+      : '<span style="color:var(--muted);font-size:12px">No entries — add one above.</span>';
+  }
   return `
     <div class="new-ads-section">
       <div class="new-ads-title">New Ads uploaded today</div>
@@ -1214,7 +1284,10 @@ function renderNewAds() {
 }
 
 function renderQueue() {
-  const q = getQueue();
+  let q = getQueue();
+  if (searchQuery) {
+    q = q.filter(item => (item.text || '').toLowerCase().includes(searchQuery));
+  }
   if (!q.length && !adminMode) return '';
   let items = '';
   for (let i = 0; i < q.length; i++) {
@@ -1223,7 +1296,11 @@ function renderQueue() {
       : '';
     items += `<div class="new-ad-item">${delBtn}<span>${escHtml(q[i].text)}</span></div>`;
   }
-  if (!items && adminMode) items = '<span style="color:var(--muted);font-size:12px">No entries — add one above.</span>';
+  if (!items && adminMode) {
+    items = searchQuery 
+      ? '<span style="color:var(--muted);font-size:12px">No matching entries.</span>' 
+      : '<span style="color:var(--muted);font-size:12px">No entries — add one above.</span>';
+  }
   return `
     <div class="new-ads-section">
       <div class="new-ads-title">Queued for CPS upload</div>
@@ -1242,6 +1319,11 @@ function render() {
                 || mp.d7.length || mp.d3.length || mp.d0.length;
   if (!hasData && !extendedMetricsVisible) return;
 
+  const filteredCracked = filterPromos(crackedPromos);
+  const filteredActiveD7 = filterPromos(activeD7Promos);
+  const filteredD3 = filterPromos([...promoData.d3, ...mp.d3.map(manualToPromo)]);
+  const filteredD0 = filterPromos([...promoData.d0, ...mp.d0.map(manualToPromo)]);
+
   const addBtn = bucket => adminMode
     ? ` <button class="btn-sm edit-btn" style="vertical-align:middle;margin-left:8px" onclick="openAddPromoModal('${bucket}')">+ Add Promo</button>`
     : '';
@@ -1249,13 +1331,13 @@ function render() {
   content.innerHTML = `
     ${hasData ? `
       <div class="section-title">Cracked Assets</div>
-      ${renderD7(crackedPromos, 'No Cracked Assets.', 'Upload Date', 'cracked', 'd7')}
+      ${renderD7(filteredCracked, 'No Cracked Assets.', 'Upload Date', 'cracked', 'd7')}
       <div class="section-title">D7 Mature Promos${addBtn('d7')}</div>
-      ${renderD7(activeD7Promos, 'No D7 Mature promos.', 'Start Date', 'd7', 'cracked')}
+      ${renderD7(filteredActiveD7, 'No D7 Mature promos.', 'Start Date', 'd7', 'cracked')}
       <div class="section-title">D3 Mature Promos${addBtn('d3')}</div>
-      ${renderD3([...promoData.d3, ...mp.d3.map(manualToPromo)])}
+      ${renderD3(filteredD3)}
       <div class="section-title">D0 Promos${addBtn('d0')}</div>
-      ${renderD0([...promoData.d0, ...mp.d0.map(manualToPromo)])}
+      ${renderD0(filteredD0)}
     ` : ''}
     ${renderExtendedMetrics()}
     ${renderNewAds()}
@@ -1277,36 +1359,7 @@ function updateExtendedMetricsButton() {
 }
 
 function renderExtendedMetrics() {
-  if (!extendedMetricsVisible) return '';
-  if (!_debugRows.length) {
-    return '<p style="color:var(--muted);font-size:13px;padding:8px 0">Load the sheet to show extended metrics.</p>';
-  }
-
-  const colIndexes = getNonEmptyColumnIndexes(_debugRows);
-  const header = _debugRows[0] || [];
-  const rows = _debugRows.slice(1).filter(row => colIndexes.some(i => fmt(row[i]) !== '—'));
-  const headCells = colIndexes
-    .map(i => `<th>${escHtml(header[i] || columnLabel(i))}</th>`)
-    .join('');
-  const bodyRows = rows.map((row, rowIdx) => `
-    <tr>
-      <td>${rowIdx + 1}</td>
-      ${colIndexes.map(i => `<td>${escHtml(fmt(row[i]))}</td>`).join('')}
-    </tr>`).join('');
-
-  return `
-    <div class="section-title">Extended Metrics</div>
-    <div class="table-wrap extended-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Row</th>
-            ${headCells}
-          </tr>
-        </thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
-    </div>`;
+  return '';
 }
 
 function getNonEmptyColumnIndexes(rows) {
