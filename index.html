@@ -506,6 +506,7 @@ let C = {
   INSTALLS: 6,  SPENT:    7,  ACT_D0:   8,  ACT_D3:      9,
   CONV_D7:  11, REC_D7:   14, D3H3:     40, D3H5:       41, D7H5_O: 42,
   D7H10_O:  43, D7H5_SS:  46, D7H10_SS: 47, D3_MAT:     48, D7_MAT: 49,
+  D1_SPENT: 50,
 };
 
 // Column-letter → semantic key (used as fallback when labels are empty)
@@ -514,11 +515,13 @@ const LETTER_TO_KEY = {
   I:'ACT_D0', J:'ACT_D3', L:'CONV_D7', O:'REC_D7',
   AO:'D3H3', AP:'D3H5', AQ:'D7H5_O', AR:'D7H10_O',
   AU:'D7H5_SS', AV:'D7H10_SS', AW:'D3_MAT', AX:'D7_MAT',
+  AY:'D1_SPENT',
 };
 
 // Label patterns — matched against GViz column labels (case-insensitive)
 // List order matters: duplicates (D7H5, D7H10) are resolved by first/second occurrence
 const LABEL_RULES = [
+  { key: 'D1_SPENT', test: s => /active.?spends|d-1.?spend/i.test(s) },
   { key: 'ANGLE',    test: s => /\bangle\b/i.test(s) },
   { key: 'METRIC',   test: s => /metrics|asset.?code/i.test(s) },
   { key: 'DATE',     test: s => /start.?date|upload.?date/i.test(s) },
@@ -1022,10 +1025,14 @@ function updateAdminUI() {
   }
 }
 
+function isActiveAd(p) {
+  if (!p || !p.data || C.D1_SPENT == null) return false;
+  const val = parseVal(p.data[C.D1_SPENT]);
+  return val !== null && val > 50;
+}
+
 function statusCell(p) {
-  const hasData = p && p.data && C.SPENT != null && p.data[C.SPENT];
-  const isSpentOver50 = hasData && parseVal(p.data[C.SPENT]) > 50;
-  if (isSpentOver50) {
+  if (isActiveAd(p)) {
     return `<td style="color: #2e7d32; font-weight: bold; font-size: 16px; text-align: center;">✔</td>`;
   } else {
     return `<td style="color: #c62828; font-weight: bold; font-size: 16px; text-align: center;">✘</td>`;
@@ -1301,14 +1308,14 @@ function onFilterActiveChange(checked) {
 function filterPromos(promoList) {
   let list = promoList;
   if (filterActiveOnly) {
-    list = list.filter(p => p && p.data && parseVal(p.data[C.SPENT]) > 50);
+    list = list.filter(p => isActiveAd(p));
   }
   if (!searchQuery) return list;
   return list.filter(p => {
     const angle = (p.angle || '').toLowerCase();
     const assetCode = (p.assetCode || '').toLowerCase();
     const action = (getAction(p.assetCode) || '').toLowerCase();
-    const isActive = p && p.data && parseVal(p.data[C.SPENT]) > 50;
+    const isActive = isActiveAd(p);
     
     return angle.includes(searchQuery) || 
            assetCode.includes(searchQuery) || 
