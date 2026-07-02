@@ -870,8 +870,10 @@ function categorize(promos) {
 
 // ── VALUE HELPERS ─────────────────────────────────────────────────────────────
 function parseVal(s) {
-  if (!s || s === '#N/A' || s.trim() === '') return null;
-  const clean = s.trim().replace(/,/g, '');
+  if (s === null || s === undefined) return null;
+  const str = String(s).trim();
+  if (!str || str === '#N/A' || str === '') return null;
+  const clean = str.replace(/,/g, '');
   if (clean.endsWith('%')) {
     const n = parseFloat(clean);
     return isNaN(n) ? null : n / 100;
@@ -1561,6 +1563,7 @@ function seedDefaultActions() {
 (async function init() {
   // 1. Hydrate cache from localStorage instantly (no flicker)
   try { _cache = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { _cache = {}; }
+  seedDefaultActions();
 
   // 2. Attempt Supabase connection via URL hash params
   const cfg = getSbConfig();
@@ -1570,9 +1573,11 @@ function seedDefaultActions() {
       const { data, error } = await _sb.from('admin_store').select('data').eq('id', 1).single();
       if (error) throw error;
       _cache = data.data || {};
+      seedDefaultActions();
       try { localStorage.setItem(STORE_KEY, JSON.stringify(_cache)); } catch {}
       _sbReady = true;
       setSyncStatus('live');
+      render();
 
       // Realtime: refresh cache + re-render when another user saves
       _sb.channel('admin-sync')
@@ -1585,8 +1590,11 @@ function seedDefaultActions() {
         .subscribe();
     } catch (e) {
       console.warn('Supabase unavailable, using localStorage:', e.message);
+      seedDefaultActions();
       setSyncStatus('error');
     }
+  } else {
+    seedDefaultActions();
   }
 
   // 3. Render
