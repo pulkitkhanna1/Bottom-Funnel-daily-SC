@@ -505,7 +505,6 @@ let C = {
   INSTALLS: 6,  SPENT:    7,  ACT_D0:   8,  ACT_D3:      9,
   CONV_D7:  11, REC_D7:   14, D3H3:     40, D3H5:       41, D7H5_O: 42,
   D7H10_O:  43, D7H5_SS:  46, D7H10_SS: 47, D3_MAT:     48, D7_MAT: 49,
-  CD:       81,
 };
 
 // Column-letter → semantic key (used as fallback when labels are empty)
@@ -514,7 +513,6 @@ const LETTER_TO_KEY = {
   I:'ACT_D0', J:'ACT_D3', L:'CONV_D7', O:'REC_D7',
   AO:'D3H3', AP:'D3H5', AQ:'D7H5_O', AR:'D7H10_O',
   AU:'D7H5_SS', AV:'D7H10_SS', AW:'D3_MAT', AX:'D7_MAT',
-  CD:'CD',
 };
 
 // Label patterns — matched against GViz column labels (case-insensitive)
@@ -1021,24 +1019,19 @@ function updateAdminUI() {
   }
 }
 
-function getDisplayAction(p) {
-  const assetCode = typeof p === 'string' ? p : p.assetCode;
-  const manual = getAction(assetCode).trim();
-  const cdVal = (p && p.data && C.CD != null && p.data[C.CD]) ? String(p.data[C.CD]).trim() : '';
-  
-  if (cdVal && manual) {
-    if (cdVal === manual) return cdVal;
-    return cdVal + '\n' + manual;
+function statusCell(p) {
+  const hasData = p && p.data && C.SPENT != null && p.data[C.SPENT];
+  const isSpentOver50 = hasData && parseVal(p.data[C.SPENT]) > 50;
+  if (isSpentOver50) {
+    return `<td style="color: #2e7d32; font-weight: bold; font-size: 16px; text-align: center;">✔</td>`;
+  } else {
+    return `<td style="color: #c62828; font-weight: bold; font-size: 16px; text-align: center;">✘</td>`;
   }
-  return cdVal || manual;
 }
 
 function actionCell(p, rowspan, hideScope = 'default', moveTarget = '') {
   const assetCode = typeof p === 'string' ? p : p.assetCode;
-  const text = getDisplayAction(p);
-  const isSpentOver50 = p && p.data && parseVal(p.data[C.SPENT]) > 50;
-  const activeBadge = isSpentOver50 ? '<span class="active-badge">active</span>' : '';
-  
+  const text = getAction(assetCode);
   const rsAttr = rowspan > 1 ? `rowspan="${rowspan}"` : '';
   const isHidden = getHidden(hideScope).includes(assetCode);
   const hideBtn = adminMode
@@ -1052,24 +1045,11 @@ function actionCell(p, rowspan, hideScope = 'default', moveTarget = '') {
   const delBtn = adminMode && p._manual
     ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
     : '';
-  
   if (adminMode) {
     const adminBtns = `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${hideBtn}${moveBtn}${delBtn}</div>`;
-    const cdVal = (p && p.data && C.CD != null && p.data[C.CD]) ? String(p.data[C.CD]).trim() : '';
-    const cdHtml = cdVal ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;font-style:italic">Sheet (CD): ${escHtml(cdVal)}</div>` : '';
-    
-    return `<td class="action-cell left" ${rsAttr}>
-      ${adminBtns}
-      ${activeBadge ? `<div style="margin-bottom:4px">${activeBadge}</div>` : ''}
-      ${cdHtml}
-      <textarea class="action-textarea" oninput="saveActionInline('${esc(assetCode)}',this.value)">${escHtml(getAction(assetCode))}</textarea>
-    </td>`;
+    return `<td class="action-cell left" ${rsAttr}>${adminBtns}<textarea class="action-textarea" oninput="saveActionInline('${esc(assetCode)}',this.value)">${escHtml(text)}</textarea></td>`;
   }
-  
-  let htmlText = escHtml(text).replace(/\\n|\n/g, '<br>');
-  if (activeBadge) {
-    htmlText = activeBadge + (htmlText ? '<br>' + htmlText : '');
-  }
+  const htmlText = escHtml(text).replace(/\\n|\n/g, '<br>');
   return `<td class="action-cell left" ${rsAttr}>${htmlText}</td>`;
 }
 
@@ -1087,7 +1067,7 @@ function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
     out += `
       <tr class="${bench}">
         <td rowspan="2" class="left">${escHtml(p.angle)}</td>
-        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
         <td>${fmt(b[C.CONV_D7])}</td>
         <td>${fmt(b[C.REC_D7])}</td>
@@ -1110,6 +1090,7 @@ function d7Rows(promoList, cls = '', hideScope = 'default', moveTarget = '') {
         <td>${fmt(d[C.D3_MAT])}</td>
         <td>${fmt(d[C.D7_MAT])}</td>
         <td>${fmt(d[C.SPENT])}</td>
+        ${statusCell(p)}
         ${cellT(d[C.ACT_D0], 0.23)}
         ${cell(d[C.ACT_D3],   b[C.ACT_D3])}
         ${cell(d[C.CONV_D7],  b[C.CONV_D7])}
@@ -1133,7 +1114,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return `<p style="color:var(--muted);font-size:13px;padding:8px 0">${emptyLabel}</p>`;
 
-  const colCount = extendedMetricsVisible ? 20 : 16;
+  const colCount = extendedMetricsVisible ? 21 : 17;
   let rows = d7Rows(visible, '', hideScope, moveTarget);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -1154,6 +1135,7 @@ function renderD7(promos, emptyLabel = 'No D7 Mature promos.', dateLabel = 'Star
             <th rowspan="2">D3 Mature installs</th>
             <th rowspan="2">D7 Mature installs</th>
             <th rowspan="2">Amount spent</th>
+            <th rowspan="2">Active</th>
             <th colspan="2">Activation</th>
             <th colspan="1">Conversion</th>
             <th colspan="1">Recovery</th>
@@ -1183,7 +1165,7 @@ function d3Rows(promoList, cls = '') {
     out += `
       <tr class="${bench}">
         <td rowspan="2" class="left">${escHtml(p.angle)}</td>
-        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td>
+        <td>Benchmark</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
         <td>${fmt(b[C.ACT_D3])}</td>
         <td>${fmt(b[C.D3H5])}</td>
         ${extendedMetricsVisible ? `
@@ -1200,6 +1182,7 @@ function d3Rows(promoList, cls = '') {
         <td>${fmt(d[C.INSTALLS])}</td>
         <td>${fmt(d[C.D3_MAT])}</td>
         <td>${fmt(d[C.SPENT])}</td>
+        ${statusCell(p)}
         ${cell(d[C.ACT_D3], b[C.ACT_D3])}
         ${cell(d[C.D3H5],   b[C.D3H5])}
         ${extendedMetricsVisible ? `
@@ -1217,7 +1200,7 @@ function renderD3(promos) {
   const hiddenP = adminMode ? promos.filter(p =>  hidden.includes(p.assetCode)) : [];
   if (!visible.length && !hiddenP.length) return '<p style="color:var(--muted);font-size:13px;padding:8px 0">No D3 Mature promos.</p>';
 
-  const colCount = extendedMetricsVisible ? 13 : 11;
+  const colCount = extendedMetricsVisible ? 14 : 12;
   let rows = d3Rows(visible);
   if (hiddenP.length) {
     rows += `<tr class="hidden-divider"><td colspan="${colCount}">Hidden</td></tr>`;
@@ -1237,6 +1220,7 @@ function renderD3(promos) {
             <th>Installs</th>
             <th>D3 Mature installs</th>
             <th>Amount spent</th>
+            <th>Active</th>
             <th>Activation D3</th>
             <th>D3H5 SS</th>
             ${extendedMetricsVisible ? `<th>D3H3 (O)</th><th>D3H5 (O)</th>` : ''}
@@ -1260,6 +1244,7 @@ function d0Row(p, hidden = false) {
       <td>${fmt(d[C.CPI])}</td>
       <td>${fmt(d[C.INSTALLS])}</td>
       <td>${fmt(d[C.SPENT])}</td>
+      ${statusCell(p)}
       ${cellT(d[C.ACT_D0], 0.23)}
       ${actionCell(p, 1)}
     </tr>`;
@@ -1273,7 +1258,7 @@ function renderD0(promos) {
 
   let rows = visible.map(p => d0Row(p)).join('');
   if (hiddenP.length) {
-    rows += `<tr class="hidden-divider"><td colspan="9">Hidden</td></tr>`;
+    rows += `<tr class="hidden-divider"><td colspan="10">Hidden</td></tr>`;
     rows += hiddenP.map(p => d0Row(p, true)).join('');
   }
 
@@ -1289,6 +1274,7 @@ function renderD0(promos) {
             <th>CPI on CPS</th>
             <th>Installs</th>
             <th>Amount spent</th>
+            <th>Active</th>
             <th>Activation D0</th>
             <th class="action-cell">Action</th>
           </tr>
@@ -1318,7 +1304,7 @@ function filterPromos(promoList) {
   return list.filter(p => {
     const angle = (p.angle || '').toLowerCase();
     const assetCode = (p.assetCode || '').toLowerCase();
-    const action = (getDisplayAction(p) || '').toLowerCase();
+    const action = (getAction(p.assetCode) || '').toLowerCase();
     const isActive = p && p.data && parseVal(p.data[C.SPENT]) > 50;
     
     return angle.includes(searchQuery) || 
