@@ -404,6 +404,40 @@
       padding-bottom: 4px;
     }
 
+    .active-badge {
+      color: #2e7d32;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+    }
+
+    .search-wrap {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 4px 0 12px;
+      flex-wrap: wrap;
+    }
+    .search-wrap .search-input {
+      margin: 0;
+    }
+    .active-filter-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+    }
+    .active-filter-checkbox {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #2e7d32;
+    }
+
   </style>
 </head>
 <body>
@@ -420,8 +454,13 @@
     </div>
   </div>
 
-  <div class="status-bar" id="status-bar"></div>
-  <input type="search" id="search-input" class="search-input" placeholder="Search angle, asset, action..." oninput="onSearchChange(this.value)"/>
+  <div class="search-wrap">
+    <input type="search" id="search-input" class="search-input" placeholder="Search angle, asset, action..." oninput="onSearchChange(this.value)"/>
+    <label class="active-filter-label">
+      <input type="checkbox" id="filter-active-checkbox" class="active-filter-checkbox" onchange="onFilterActiveChange(this.checked)"/>
+      Active ads (D-1)
+    </label>
+  </div>
 
   <div id="report-content"></div>
 
@@ -466,6 +505,7 @@ let C = {
   INSTALLS: 6,  SPENT:    7,  ACT_D0:   8,  ACT_D3:      9,
   CONV_D7:  11, REC_D7:   14, D3H3:     40, D3H5:       41, D7H5_O: 42,
   D7H10_O:  43, D7H5_SS:  46, D7H10_SS: 47, D3_MAT:     48, D7_MAT: 49,
+  CD:       81,
 };
 
 // Column-letter → semantic key (used as fallback when labels are empty)
@@ -474,6 +514,7 @@ const LETTER_TO_KEY = {
   I:'ACT_D0', J:'ACT_D3', L:'CONV_D7', O:'REC_D7',
   AO:'D3H3', AP:'D3H5', AQ:'D7H5_O', AR:'D7H10_O',
   AU:'D7H5_SS', AV:'D7H10_SS', AW:'D3_MAT', AX:'D7_MAT',
+  CD:'CD',
 };
 
 // Label patterns — matched against GViz column labels (case-insensitive)
@@ -531,6 +572,7 @@ let adminMode  = false;
 let promoData  = { d7: [], d3: [], d0: [] };
 let extendedMetricsVisible = false;
 let searchQuery = '';
+let filterActiveOnly = false;
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
 let _sb      = null;   // Supabase client (null = not configured)
@@ -979,10 +1021,24 @@ function updateAdminUI() {
   }
 }
 
-// ── RENDER ────────────────────────────────────────────────────────────────────
+function getDisplayAction(p) {
+  const assetCode = typeof p === 'string' ? p : p.assetCode;
+  const manual = getAction(assetCode).trim();
+  const cdVal = (p && p.data && C.CD != null && p.data[C.CD]) ? String(p.data[C.CD]).trim() : '';
+  
+  if (cdVal && manual) {
+    if (cdVal === manual) return cdVal;
+    return cdVal + '\n' + manual;
+  }
+  return cdVal || manual;
+}
+
 function actionCell(p, rowspan, hideScope = 'default', moveTarget = '') {
   const assetCode = typeof p === 'string' ? p : p.assetCode;
-  const text = getAction(assetCode);
+  const text = getDisplayAction(p);
+  const isSpentOver50 = p && p.data && parseVal(p.data[C.SPENT]) > 50;
+  const activeBadge = isSpentOver50 ? '<span class="active-badge">active</span>' : '';
+  
   const rsAttr = rowspan > 1 ? `rowspan="${rowspan}"` : '';
   const isHidden = getHidden(hideScope).includes(assetCode);
   const hideBtn = adminMode
@@ -996,11 +1052,24 @@ function actionCell(p, rowspan, hideScope = 'default', moveTarget = '') {
   const delBtn = adminMode && p._manual
     ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
     : '';
+  
   if (adminMode) {
     const adminBtns = `<div style="margin-bottom:4px;display:flex;gap:4px;flex-wrap:wrap">${hideBtn}${moveBtn}${delBtn}</div>`;
-    return `<td class="action-cell left" ${rsAttr}>${adminBtns}<textarea class="action-textarea" oninput="saveActionInline('${esc(assetCode)}',this.value)">${escHtml(text)}</textarea></td>`;
+    const cdVal = (p && p.data && C.CD != null && p.data[C.CD]) ? String(p.data[C.CD]).trim() : '';
+    const cdHtml = cdVal ? `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;font-style:italic">Sheet (CD): ${escHtml(cdVal)}</div>` : '';
+    
+    return `<td class="action-cell left" ${rsAttr}>
+      ${adminBtns}
+      ${activeBadge ? `<div style="margin-bottom:4px">${activeBadge}</div>` : ''}
+      ${cdHtml}
+      <textarea class="action-textarea" oninput="saveActionInline('${esc(assetCode)}',this.value)">${escHtml(getAction(assetCode))}</textarea>
+    </td>`;
   }
-  const htmlText = escHtml(text).replace(/\\n|\n/g, '<br>');
+  
+  let htmlText = escHtml(text).replace(/\\n|\n/g, '<br>');
+  if (activeBadge) {
+    htmlText = activeBadge + (htmlText ? '<br>' + htmlText : '');
+  }
   return `<td class="action-cell left" ${rsAttr}>${htmlText}</td>`;
 }
 
@@ -1180,17 +1249,7 @@ function renderD3(promos) {
 }
 
 function d0Row(p, hidden = false) {
-  const d = p.data, b = p.bench || [];
-  const isHid = getHidden().includes(p.assetCode);
-  const delBtn = adminMode && p._manual
-    ? `<button class="btn-sm hide-btn" onclick="deleteManualPromo('${esc(p._id)}','${p._bucket}')">Del</button>`
-    : '';
-  const adminCtrl = adminMode
-    ? `<div style="display:flex;gap:4px;margin-bottom:3px">
-        <button class="btn-sm ${isHid ? 'show-btn' : 'hide-btn'}" onclick="toggleHide('${esc(p.assetCode)}')">${isHid ? 'Show' : 'Hide'}</button>
-        ${delBtn}
-       </div>`
-    : '';
+  const d = p.data;
   const cls = hidden ? 'hidden-data' : 'data-row';
   return `
     <tr class="${cls}">
@@ -1202,10 +1261,7 @@ function d0Row(p, hidden = false) {
       <td>${fmt(d[C.INSTALLS])}</td>
       <td>${fmt(d[C.SPENT])}</td>
       ${cellT(d[C.ACT_D0], 0.23)}
-      <td class="action-cell left">${adminCtrl}${adminMode
-        ? `<textarea class="action-textarea" oninput="saveActionInline('${esc(p.assetCode)}',this.value)">${escHtml(getAction(p.assetCode))}</textarea>`
-        : escHtml(getAction(p.assetCode)).replace(/\\n|\n/g,'<br>')
-      }</td>
+      ${actionCell(p, 1)}
     </tr>`;
 }
 
@@ -1248,13 +1304,27 @@ function onSearchChange(val) {
   render();
 }
 
+function onFilterActiveChange(checked) {
+  filterActiveOnly = checked;
+  render();
+}
+
 function filterPromos(promoList) {
-  if (!searchQuery) return promoList;
-  return promoList.filter(p => {
+  let list = promoList;
+  if (filterActiveOnly) {
+    list = list.filter(p => p && p.data && parseVal(p.data[C.SPENT]) > 50);
+  }
+  if (!searchQuery) return list;
+  return list.filter(p => {
     const angle = (p.angle || '').toLowerCase();
     const assetCode = (p.assetCode || '').toLowerCase();
-    const action = (getAction(p.assetCode) || '').toLowerCase();
-    return angle.includes(searchQuery) || assetCode.includes(searchQuery) || action.includes(searchQuery);
+    const action = (getDisplayAction(p) || '').toLowerCase();
+    const isActive = p && p.data && parseVal(p.data[C.SPENT]) > 50;
+    
+    return angle.includes(searchQuery) || 
+           assetCode.includes(searchQuery) || 
+           action.includes(searchQuery) || 
+           (isActive && 'active'.includes(searchQuery));
   });
 }
 
