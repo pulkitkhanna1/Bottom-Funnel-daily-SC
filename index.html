@@ -37,6 +37,14 @@
       padding: 0 8px;
     }
 
+    .sticky-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--bg);
+      padding-bottom: 4px;
+    }
+
     .top {
       display: flex;
       justify-content: space-between;
@@ -443,6 +451,7 @@
 <body>
 
 <main class="page">
+  <div class="sticky-header">
   <div class="top">
     <h1>Bottom Funnel Update</h1>
     <div class="top-right">
@@ -463,6 +472,7 @@
       Active ads (D-1)
     </label>
   </div>
+  </div><!-- /.sticky-header -->
 
   <div id="report-content"></div>
 
