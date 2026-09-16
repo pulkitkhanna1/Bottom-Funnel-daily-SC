@@ -468,6 +468,10 @@
   <div class="search-wrap">
     <input type="search" id="search-input" class="search-input" placeholder="Search angle, asset, action..." oninput="onSearchChange(this.value)"/>
     <label class="active-filter-label">
+      <input type="checkbox" id="filter-spend-checkbox" class="active-filter-checkbox" onchange="onFilterSpendChange(this.checked)" checked/>
+      Lifetime spend &gt; $100
+    </label>
+    <label class="active-filter-label">
       <input type="checkbox" id="filter-active-checkbox" class="active-filter-checkbox" onchange="onFilterActiveChange(this.checked)"/>
       Active ads (D-1)
     </label>
@@ -586,6 +590,11 @@ let promoData  = { d7: [], d3: [], d0: [] };
 let extendedMetricsVisible = false;
 let searchQuery = '';
 let filterActiveOnly = false;
+let filterSpendOver100 = true;
+try {
+  const savedSpendFilter = localStorage.getItem('bfu_filter_spend_100');
+  if (savedSpendFilter !== null) filterSpendOver100 = savedSpendFilter === 'true';
+} catch {}
 
 // ── SUPABASE ──────────────────────────────────────────────────────────────────
 let _sb      = null;   // Supabase client (null = not configured)
@@ -1036,6 +1045,12 @@ function updateAdminUI() {
   }
 }
 
+function isSpendOver100(p) {
+  if (!p || !p.data || C.SPENT == null) return false;
+  const val = parseVal(p.data[C.SPENT]);
+  return val !== null && val > 100;
+}
+
 function isActiveAd(p) {
   if (!p || !p.data || C.D1_SPENT == null) return false;
   const val = parseVal(p.data[C.D1_SPENT]);
@@ -1311,6 +1326,12 @@ function onSearchChange(val) {
   render();
 }
 
+function onFilterSpendChange(checked) {
+  filterSpendOver100 = checked;
+  try { localStorage.setItem('bfu_filter_spend_100', checked); } catch {}
+  render();
+}
+
 function onFilterActiveChange(checked) {
   filterActiveOnly = checked;
   render();
@@ -1318,6 +1339,9 @@ function onFilterActiveChange(checked) {
 
 function filterPromos(promoList) {
   let list = promoList;
+  if (filterSpendOver100) {
+    list = list.filter(p => isSpendOver100(p));
+  }
   if (filterActiveOnly) {
     list = list.filter(p => isActiveAd(p));
   }
@@ -1616,6 +1640,8 @@ function seedDefaultActions() {
   }
 
   // 3. Render
+  const spendCb = document.getElementById('filter-spend-checkbox');
+  if (spendCb) spendCb.checked = filterSpendOver100;
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-GB', {
     day: 'numeric', month: 'long', year: 'numeric'
   });
